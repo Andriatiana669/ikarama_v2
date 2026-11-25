@@ -1,0 +1,91 @@
+# .github/workflows/ci-cd.yml
+# Intégration et déploiement continus d'Ikarama (voir docs/CI-CD.md).
+#
+#   À chaque push (toutes les branches) et chaque pull request :
+#     1. Backend  : installer les dépendances, vérifier (check, migrations manquantes), tester
+#     2. Frontend : installer les dépendances, vérifier les types, compiler
+#   Seulement pour un push sur main, si 1 et 2 réussissent :
+#     3. Déployer dans la VirtualBox, par le runner GitHub auto-hébergé installé dans la VM
+#        (étiquette « ikarama ») : mise à jour de /home/user/projets/ikarama_v2, créé s'il n'existe pas.
+
+name: CI/CD Ikarama
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:   # bouton « Run workflow » dans l'onglet Actions
+
+concurrency:
+  group: ikarama-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (vérifier, installer, tester)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # Tests sur SQLite, sans aucun secret
+      DB_ENGINE: sqlite
+      DEBUG: 'True'
+      SECRET_KEY: ci-cle-de-test-sans-valeur
+      CA_BUNDLE: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Vérifier la configuration Django
+        run: python manage.py check
+      - name: Vérifier qu'aucune migration ne manque
+        run: python manage.py makemigrations --check --dry-run
+      - name: Lancer les tests
+        run: python manage.py test --noinput
+
+  frontend:
+    name: Frontend (installer, vérifier, compiler)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Installer les dépendances
+        run: npm ci
+      - name: Vérifier les types TypeScript
+        run: npx vue-tsc --noEmit -p tsconfig.app.json
+      - name: Compiler
+        run: npm run build
+
+  deploiement:
+    name: Déployer dans la VirtualBox
+    needs: [backend, frontend]
+    # Seulement un push sur main (jamais une pull request : le runner de la VM n'exécute pas de code non fusionné)
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, ikarama]
+    environment: production
+    env:
+      # Réglables dans GitHub > Settings > Secrets and variables > Actions > Variables
+      IKARAMA_DOSSIER: ${{ vars.IKARAMA_DOSSIER || '/home/user/projets/ikarama_v2' }}
+      IKARAMA_SERVICE: ${{ vars.IKARAMA_SERVICE || 'ikarama' }}
+      IKARAMA_URL_SANTE: ${{ vars.IKARAMA_URL_SANTE || 'http://127.0.0.1:4000/admin/login/' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Déployer
+        run: bash deploiement/deployer.sh "$GITHUB_WORKSPACE"

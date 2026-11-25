@@ -1,5 +1,26 @@
 # Ikarama — suivi des pointages
 
+Application de suivi des pointages et du rendement, construite sur le socle d'Alimanaka (authentification, utilisateurs, équipes).
+
+| Partie | Technologies |
+| --- | --- |
+| Backend | Python 3.10+, Django 5.2, Django REST Framework, Django Channels (WebSocket), PostgreSQL |
+| Frontend | Node.js 20+, Vue 3, TypeScript, Vite, Pinia, Vue Router |
+| Identité | Keycloak (SSO) ; chaque jeton est validé par Keycloak |
+| Temps réel | WebSocket `/ws/` (Daphne) ; Redis facultatif |
+
+Un seul fichier `.env`, à la racine, sert au backend **et** au frontend. Modèle commenté : `.env.example`.
+
+**Documentation**
+
+- `docs/guide/` : **guide utilisateur** (employé, responsable, administrateur), aussi affiché dans l'application (menu **Aide**) ;
+- `docs/DEPLOIEMENT.md` : **mise en production** sur Linux avec nginx (WebSocket, Redis, tâches planifiées, mise à jour) ;
+- `docs/CI-CD.md` : **CI/CD GitHub Actions** (vérifier, installer, tester à chaque push ; déployer `main` dans la
+  VirtualBox par un runner auto-hébergé : `.github/workflows/ci-cd.yml`, `deploiement/`) ;
+- ce fichier : démarrage, organisation du code, recettes.
+
+---
+
 ## 1. Démarrer en local
 
 ```bash
@@ -11,8 +32,8 @@ python -m venv venv
 venv\Scripts\activate           # Windows   (Linux/macOS : source venv/bin/activate)
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py createsuperuser #Pas besoin ici
-python manage.py test
+python manage.py createsuperuser
+python manage.py test           # environ 200 tests doivent passer
 python manage.py runserver 0.0.0.0:4000   # serveur ASGI (Daphne) : HTTP et WebSocket
 
 # Frontend (second terminal)
@@ -20,6 +41,25 @@ cd frontend
 npm install
 npm run dev                     # http://<adresse du poste>:4002
 ```
+
+- Essai rapide sans PostgreSQL : `DB_ENGINE=sqlite` dans `.env`.
+- Sans `REDIS_URL`, le temps réel fonctionne en mode mémoire (un seul processus serveur : c'est le cas de `runserver`).
+- Sans `EMAIL_HOST`, les e-mails s'affichent dans la console du serveur.
+
+**Keycloak** : dans le client utilisé par le frontend, déclarer *Valid redirect URIs*, *Web origins* et *Valid post logout redirect URIs* pour `http://localhost:4002/` et l'adresse de chaque serveur.
+
+### Réglages principaux (`.env`)
+
+| Variable | Rôle |
+| --- | --- |
+| `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `HTTPS` | Sécurité Django |
+| `DB_ENGINE`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Base de données |
+| `CA_BUNDLE` | Certificats pour Keycloak et l'API RH : `systeme` ou chemin d'un `.pem` (recommandé) ; `desactive` = aucune vérification (accepté même avec `DEBUG=False`, signalé au démarrage et dans les Contrôles de cohérence) |
+| `KEYCLOAK_*`, `VITE_KEYCLOAK_*` | Connexion (SSO) |
+| `EXTERNAL_API_*`, `SYNC_CONNEXION_INTERVALLE_HEURES` | API RH (fiches employés, synchronisation à la connexion) |
+| `VITE_BACKEND_URL`, `VITE_FRONTEND_PORT`, `VITE_PHOTO_PROFIL_URL` | Frontend |
+| `REDIS_URL`, `VITE_WS_URL` | Temps réel (voir plus bas) |
+| `EMAIL_*`, `DEFAULT_FROM_EMAIL`, `URL_APPLICATION` | E-mail récapitulatif des notifications |
 
 ---
 

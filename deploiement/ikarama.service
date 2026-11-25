@@ -1,0 +1,17 @@
+# deploiement/ikarama.service — service systemd d'Ikarama dans la VM (voir docs/CI-CD.md, étape 5).
+# Installer :  sudo cp deploiement/ikarama.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#              sudo systemctl enable --now ikarama
+# Adapter « user » et le chemin si besoin.
+[Unit]
+Description=Ikarama (Daphne : HTTP et WebSocket)
+After=network.target postgresql.service
+
+[Service]
+User=user
+WorkingDirectory=/home/user/projets/ikarama_v2/backend
+ExecStart=/home/user/projets/ikarama_v2/backend/venv/bin/daphne -b 127.0.0.1 -p 4000 ikarama.asgi:application
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
