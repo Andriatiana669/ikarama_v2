@@ -8,6 +8,7 @@ Rappels de pointage incomplet (notification dans l'application ; l'e-mail part a
 
 Personnes concernées : celles qui ont accès au site et sont responsables ou membres d'au moins une affaire en cours.
 """
+from ikarama.temps import aujourdhui
 from datetime import date as Date
 from datetime import timedelta
 
@@ -44,7 +45,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         try:
-            aujourd_hui = Date.fromisoformat(options['date']) if options['date'] else Date.today()
+            aujourd_hui = Date.fromisoformat(options['date']) if options['date'] else aujourdhui()
         except ValueError:
             raise CommandError('Date invalide (AAAA-MM-JJ).')
         if options['veille']:

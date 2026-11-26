@@ -4,6 +4,7 @@ Contrôles de cohérence (Paramètres > Contrôles de cohérence, administrateur
 problèmes trouvés et liste les premiers, avec un lien vers la page où les corriger.
   GET /api/controles/            tous les contrôles (nombre + 50 premiers éléments chacun)
 """
+from ikarama.temps import aujourdhui
 from datetime import date as Date
 from datetime import timedelta
 
@@ -104,7 +105,7 @@ def controles():
             lambda a: {'libelle': _nom_affaire(a), 'detail': '', 'lien': f'/marches/ajouter?affaire={a.id}'})
 
     # 9. Jours ouvrables pointés sans pause (60 derniers jours)
-    depuis = Date.today() - timedelta(days=60)
+    depuis = aujourdhui() - timedelta(days=60)
     jours = (Pointage.objects.filter(date__gte=depuis).values('employe_id', 'employe__code_barre', 'employe__prenom_usuel',
                                                               'employe__prenom', 'date')
              .annotate(pauses=Count('id', filter=Q(pause=True))).filter(pauses=0).order_by('-date'))

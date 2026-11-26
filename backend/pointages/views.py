@@ -12,6 +12,7 @@ API du pointage (préfixe /api/pointages/) — « Mon temps » : uniquement mes 
   pointages/modele/ · pointages/importer/         import Excel (descriptions désignées par leur ID) ;
                                                   un administrateur peut importer pour n'importe qui (colonne Matricule)
 """
+from ikarama.temps import aujourdhui
 from datetime import date as Date
 from datetime import timedelta
 
@@ -69,7 +70,7 @@ def employe_vise(request):
 
 def periode(request):
     """Dates de la période (?debut / ?fin), par défaut la semaine en cours jusqu'à aujourd'hui."""
-    aujourd_hui = Date.today()
+    aujourd_hui = aujourdhui()
     try:
         debut = Date.fromisoformat(request.query_params.get('debut') or '')
     except ValueError:
@@ -95,7 +96,7 @@ class PointageViewSet(ImportExcelMixin, FiltresMixin, ExportExcelMixin, viewsets
     # --- Import Excel -----------------------------------------------------------
     import_nom = 'Pointages'
     import_colonnes = [
-        ColonneImport('date', 'Date', requis=True, largeur=12, exemple='09/11/2026', aide='JJ/MM/AAAA, pas de date à venir.'),
+        ColonneImport('date', 'Date', requis=True, largeur=12, exemple='09/11/2026', aide='JJ/MM/AAAA (une date à venir est acceptée).'),
         ColonneImport('heure_debut', 'H_Début', requis=True, largeur=10, exemple='07:30', autres_libelles=['H Debut', 'Heure début']),
         ColonneImport('heure_fin', 'H_Fin', requis=True, largeur=10, exemple='12:00', autres_libelles=['H Fin', 'Heure fin']),
         ColonneImport('tache', 'Tâche', requis=True, largeur=20, exemple='Saisie', aide='Nom d’une tâche (onglet « Tâches »).'),

@@ -8,6 +8,7 @@ Page d'accueil (première page après la connexion), selon le profil :
   administrateur: nombre de problèmes des Contrôles de cohérence, activité récente des feuilles.
   GET /api/accueil/
 """
+from ikarama.temps import aujourdhui
 from collections import defaultdict
 from datetime import date as Date
 from datetime import timedelta
@@ -46,7 +47,7 @@ class AccueilView(APIView):
         from pointages.models import Pointage
 
         moi = getattr(request.user, 'employe', None)
-        aujourd_hui = Date.today()
+        aujourd_hui = aujourdhui()
         lundi = aujourd_hui - timedelta(days=aujourd_hui.weekday())
         reponse = {'employe': EmployeResumeSerializer(moi).data if moi else None, 'date': aujourd_hui.isoformat()}
 

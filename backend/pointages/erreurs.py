@@ -4,6 +4,7 @@ Erreurs de pointage d'une personne sur une période (Mon temps, rappels, page d'
   INCOMPLET : jour ouvrable (jusqu'à « jusqu_a » compris) avec moins de 8 h pointées (H_Durée + HS) ;
   PAUSE     : jour ouvrable pointé sans la case « Pause (−1 h) ».
 """
+from ikarama.temps import aujourdhui
 from datetime import date as Date
 from datetime import timedelta
 
@@ -16,7 +17,7 @@ JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'
 
 
 def erreurs_pointage(employe, debut, fin, jusqu_a=None):
-    aujourd_hui = Date.today()
+    aujourd_hui = aujourdhui()
     limite = min(fin, jusqu_a or aujourd_hui)
     pointages = Pointage.objects.filter(employe=employe, date__gte=debut, date__lte=fin).order_by()
     par_jour = {l['date']: (l['n'] or 0) + (l['h'] or 0)

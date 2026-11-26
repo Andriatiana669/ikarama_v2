@@ -150,7 +150,7 @@ class PointageTests(DonneesFeuilleMixin, AuthentifieMixin, TestCase):
 
     def test_controles_de_saisie(self):
         self.assertEqual(self.pointer('10:00', '09:00').status_code, 400)
-        self.assertEqual(self.pointer('08:00', '09:00', jour=date.today() + timedelta(days=1)).status_code, 400)
+        self.assertEqual(self.pointer('08:00', '09:00', jour=date.today() + timedelta(days=1)).status_code, 201)   # date à venir acceptée
 
     def test_ligne_d_une_affaire_dont_je_ne_suis_pas_membre(self):
         self.affaire.responsables.set([self.membre])
@@ -864,3 +864,18 @@ class PointageTests(DonneesFeuilleMixin, AuthentifieMixin, TestCase):
         self.pointer('08:00', '09:00')
         autre = self.client_de('PR2')
         self.assertEqual(autre.get('/api/pointages/', {'debut': self.jour, 'fin': self.jour}).data['count'], 0)
+
+
+class DateDuJourTests(TestCase):
+    """« Aujourd'hui » suit le fuseau du .env (Indian/Antananarivo), même si le système est en UTC."""
+
+    def test_aujourdhui_dans_le_fuseau_du_env(self):
+        from datetime import datetime, timezone as tz
+        from unittest import mock
+
+        from ikarama import temps
+        # 22 h 30 UTC le 25 = 1 h 30 le 26 à Madagascar
+        fausse_utc = datetime(2026, 11, 25, 22, 30, tzinfo=tz.utc)
+        with mock.patch.object(temps, 'datetime', wraps=datetime) as faux:
+            faux.now.side_effect = lambda zone=None: fausse_utc.astimezone(zone) if zone else fausse_utc.replace(tzinfo=None)
+            self.assertEqual(temps.aujourdhui().isoformat(), '2026-11-26')

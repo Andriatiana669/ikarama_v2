@@ -14,6 +14,7 @@ par défaut chacun voit son propre planning ; voir l'équipe et planifier passen
 Une case : le passé et aujourd'hui viennent des pointages (projets pointés, heures) ; aujourd'hui et l'avenir
 montrent aussi ce qui est planifié.
 """
+from ikarama.temps import aujourdhui
 from collections import defaultdict
 from datetime import date as Date
 from datetime import timedelta
@@ -47,7 +48,7 @@ def lundi_de(texte):
     try:
         jour = Date.fromisoformat(texte or '')
     except ValueError:
-        jour = Date.today()
+        jour = aujourdhui()
     return jour - timedelta(days=jour.weekday())
 
 
@@ -80,7 +81,7 @@ def etat_echeances(projets):
     from django.db.models import Avg, Count
 
     from gsheets.models import LigneFeuille
-    aujourd_hui = Date.today()
+    aujourd_hui = aujourdhui()
     statut_final = Statut.pour_note_rendement()
     fini = Q(avancement__gte=100) | (Q(statut=statut_final) if statut_final else Q(pk__in=[]))
     stats = {s['description__projet_id']: s for s in LigneFeuille.objects.filter(description__projet__in=projets)
@@ -125,7 +126,7 @@ def chaine_des_chefs(personne, chefs):
 def grille(user, lundi, semaines=1, recherche=''):
     from gsheets.models import LigneFeuille
     jours = [lundi + timedelta(days=i) for i in range(7 * semaines)]
-    aujourd_hui = Date.today()
+    aujourd_hui = aujourdhui()
     personnes = list(personnes_du_planning(user, recherche).prefetch_related('postes')[:300])
     ids = [p.pk for p in personnes]
     chefs = dict(Employe.objects.exclude(chef__isnull=True).values_list('pk', 'chef_id'))
@@ -133,7 +134,7 @@ def grille(user, lundi, semaines=1, recherche=''):
     # Passé et aujourd'hui : les pointages (projet, heures)
     pointe = defaultdict(lambda: defaultdict(dict))
     for part in (PartPointage.objects.filter(pointage__employe_id__in=ids, pointage__date__gte=jours[0],
-                                             pointage__date__lte=min(jours[-1], aujourd_hui))
+                                             pointage__date__lte=jours[-1])
                  .select_related('pointage', 'description__projet__affaire', 'description__projet__prestation')):
         projet = part.description.projet
         case = pointe[part.pointage.employe_id][part.pointage.date.isoformat()]
@@ -165,18 +166,19 @@ def grille(user, lundi, semaines=1, recherche=''):
     for employe_id, jour in AffectationPlanning.objects.filter(employe_id__in=ids, date__gte=aujourd_hui,
                                                                 date__lte=prochains[-1]).values_list('employe_id', 'date'):
         prevus_proches[employe_id].add(jour)
-    pointe_aujourdhui = set(PartPointage.objects.filter(pointage__employe_id__in=ids, pointage__date=aujourd_hui)
-                            .values_list('pointage__employe_id', flat=True))
+    jours_pointes = set(PartPointage.objects.filter(pointage__employe_id__in=ids, pointage__date__gte=aujourd_hui,
+                                                    pointage__date__lte=prochains[-1])
+                        .values_list('pointage__employe_id', 'pointage__date'))
 
     lignes = []
     for p in personnes:
         cases = {}
         for jour in jours:
             cle = jour.isoformat()
-            pointes = sorted(pointe[p.pk][cle].values(), key=lambda x: -x['minutes']) if jour <= aujourd_hui else []
+            pointes = sorted(pointe[p.pk][cle].values(), key=lambda x: -x['minutes'])   # un pointage à venir compte aussi
             cases[cle] = {'pointe': pointes, 'prevu': prevu[p.pk][cle] if jour >= aujourd_hui else []}
         libres = [j.isoformat() for j in prochains if est_ouvrable(j) and j not in prevus_proches[p.pk]
-                  and not (j == aujourd_hui and p.pk in pointe_aujourdhui)]
+                  and (p.pk, j) not in jours_pointes]
         postes = list(p.postes.all())
         lignes.append({
             'employe': EmployeResumeSerializer(p).data, 'cases': cases, 'en_cours': en_cours.get(p.pk, []),
@@ -264,7 +266,7 @@ class AffectationSerializer(serializers.ModelSerializer):
         fields = ['id', 'employe', 'date', 'projet', 'commentaire']
 
     def validate_date(self, valeur):
-        if valeur < Date.today():
+        if valeur < aujourdhui():
             raise serializers.ValidationError('On ne planifie que pour aujourd’hui ou plus tard (le passé vient des pointages).')
         return valeur
 
@@ -301,7 +303,7 @@ class AffectationViewSet(viewsets.GenericViewSet):
     def partial_update(self, request, pk=None):
         affectation = self.get_object()
         verifier(request.user, MODULE, 'modifier', affectation.employe)
-        if affectation.date < Date.today():
+        if affectation.date < aujourdhui():
             return Response({'detail': 'Une journée passée ne se modifie plus.'}, status=status.HTTP_400_BAD_REQUEST)
         serializer = self.get_serializer(affectation, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

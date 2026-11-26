@@ -83,6 +83,8 @@ npm run dev                     # http://<adresse du poste>:4002
 | `temps_reel/` | WebSocket `/ws/` (`consumers.py`) et diffusion des changements (`diffusion.py`, `signaux.py`) |
 | `affichage_ev/`, `profils/` | Réservés |
 
+Date et heure du jour côté serveur : toujours `ikarama.temps.aujourdhui()` / `maintenant()` (fuseau `TIME_ZONE` du `.env`).
+
 Format d'erreur de toute l'API : `{"detail": "message lisible", "erreurs": {"champ": ["..."]}}`.
 
 ### Frontend (`frontend/src/`)

@@ -8,5 +8,5 @@ const annee = new Date().getFullYear()
 </template>
 
 <style scoped>
-.pied { padding: var(--e4) var(--e6); border-top: 1px solid var(--bordure); }
+.pied { padding: var(--e4) var(--e6); border-top: 1px solid var(--bordure); text-align: center;}
 </style>

@@ -82,8 +82,6 @@ class PointageSerializer(serializers.ModelSerializer):
         debut, fin, jour, tache = valeur('heure_debut'), valeur('heure_fin'), valeur('date'), valeur('tache')
         if debut and fin and fin <= debut:
             raise serializers.ValidationError({'heure_fin': "L'heure de fin doit être après l'heure de début."})
-        if jour and jour > Date.today():
-            raise serializers.ValidationError({'date': 'On ne peut pas pointer une date à venir.'})
         moi = self._moi()
         if moi is None:
             raise serializers.ValidationError('Votre compte n’est relié à aucune fiche employé.')

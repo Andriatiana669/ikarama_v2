@@ -12,6 +12,7 @@ Affichage Everwin : une semaine de pointages (lundi → dimanche) présentée en
     n'atteint pas 8 h.
 Chaque personne voit sa semaine ; un superadmin peut choisir une autre personne (?employe=).
 """
+from ikarama.temps import aujourdhui
 from datetime import date as Date
 from datetime import timedelta
 
@@ -80,7 +81,7 @@ class EverwinViewSet(viewsets.ViewSet):
         try:
             jour = Date.fromisoformat(request.query_params.get('semaine') or '')
         except ValueError:
-            jour = Date.today()
+            jour = aujourdhui()
         lundi = jour - timedelta(days=jour.weekday())
         return [lundi + timedelta(days=i) for i in range(7)]
 
@@ -119,7 +120,7 @@ class EverwinViewSet(viewsets.ViewSet):
                 'descriptions': [part.description.nom for part in parts], 'commentaire': p.commentaire,
             })
 
-        aujourd_hui = Date.today()
+        aujourd_hui = aujourdhui()
         totaux = {}
         for jour in jours:
             du_jour = [p for p in pointages if p.date == jour]

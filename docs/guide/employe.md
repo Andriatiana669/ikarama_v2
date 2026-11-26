@@ -22,7 +22,7 @@ L'accueil résume votre situation :
 
 ### Ajouter un pointage
 
-1. Cliquez sur **Ajouter**.
+1. Cliquez sur **Ajouter**. Vous pouvez pointer aujourd'hui, un jour passé ou un jour à venir.
 2. La date et les heures sont proposées automatiquement : le premier créneau libre de la journée (07:30–16:30). Vous pouvez les changer, ou cliquer sur un créneau libre affiché sous les heures.
 3. Cochez **Pause (−1 h)** sur un seul pointage par jour ouvrable (voir plus bas).
 4. Choisissez l'**Affaire** : celles où vous êtes déjà placé dans une feuille apparaissent en premier.
