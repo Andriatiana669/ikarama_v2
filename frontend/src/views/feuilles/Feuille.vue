@@ -146,6 +146,29 @@ function styleLigne(ligne: LigneFeuille) {
   return { background: `color-mix(in srgb, ${couleur} 16%, var(--surface))`, boxShadow: `inset 4px 0 0 ${couleur}` }
 }
 
+// --- Encarts « Affaires et prestations » et « Note de qualité » : repliés par défaut, choix mémorisé ---
+const CLE_ENCARTS = 'ikarama.feuille.encarts'
+const encarts = reactive<{ affaires: boolean; qualite: boolean }>((() => {
+  try {
+    return { affaires: false, qualite: false, ...JSON.parse(localStorage.getItem(CLE_ENCARTS) || '{}') }
+  } catch {
+    return { affaires: false, qualite: false }
+  }
+})())
+function basculerEncart(cle: 'affaires' | 'qualite') {
+  encarts[cle] = !encarts[cle]
+  try {
+    localStorage.setItem(CLE_ENCARTS, JSON.stringify(encarts))
+  } catch {
+    // stockage indisponible : le choix vaut pour cette page seulement
+  }
+}
+const resumeAffaires = computed(() => {
+  const perimetres = feuille.value?.perimetres ?? []
+  const affaires = new Set(perimetres.map((p) => p.affaire)).size
+  return `${affaires} affaire(s), ${perimetres.length} prestation(s)`
+})
+
 // Historique (chargé seulement à l'ouverture)
 const historiqueOuvert = ref(false)
 const historiqueLigne = ref<{ id: number; numero: number; description: string } | null>(null)
@@ -239,29 +262,44 @@ const classeNote = (v: string | null) => (v === null ? '' : Number(v) >= 4 ? 'bo
         <UiBouton v-if="feuille.droits?.modifier" icone="pencil" @click="router.push(`/google-sheet/feuilles/${feuille.id}/modifier`)">Modifier la feuille</UiBouton>
       </EnTetePage>
 
-      <div class="infos">
-        <div class="carte carte-corps">
-          <p class="texte-xs texte-doux titre-bloc">Affaires et prestations</p>
-          <ul class="liste">
-            <li v-for="p in feuille.perimetres" :key="`${p.affaire}-${p.prestation}`">
-              <span class="gras">{{ p.num_affaire ? `${p.num_affaire} – ` : '' }}{{ p.nom_affaire }}</span>
-              <span class="badge">{{ p.nom_prestation }}</span>
-            </li>
-          </ul>
-        </div>
-        <div class="carte carte-corps">
-          <p class="texte-xs texte-doux titre-bloc">Note de qualité</p>
-          <template v-if="feuille.utiliser_criteres && feuille.criteres.length">
-            <p class="texte-petit texte-doux aide">Moyenne des critères de CTRL (notes de 1 à 5) :</p>
+      <!-- Encarts repliables (repliés par défaut ; le choix est mémorisé dans le navigateur) -->
+      <div class="infos" :class="{ replies: !encarts.affaires && !encarts.qualite }">
+        <section class="carte encart" :class="{ ouvert: encarts.affaires }">
+          <button type="button" class="tete-encart" :aria-expanded="encarts.affaires" aria-controls="encart-affaires" @click="basculerEncart('affaires')">
+            <i class="bi bi-briefcase" aria-hidden="true" />
+            <span class="titre-bloc">Affaires et prestations</span>
+            <span class="resume-encart">{{ resumeAffaires }}</span>
+            <i class="bi chevron" :class="encarts.affaires ? 'bi-chevron-up' : 'bi-chevron-down'" aria-hidden="true" />
+          </button>
+          <div v-show="encarts.affaires" id="encart-affaires" class="corps-encart">
             <ul class="liste">
-              <li v-for="c in feuille.criteres" :key="c.id"><span class="badge badge-marine">Critère {{ c.numero }}</span> {{ c.commentaire }}</li>
+              <li v-for="p in feuille.perimetres" :key="`${p.affaire}-${p.prestation}`">
+                <span class="gras">{{ p.num_affaire ? `${p.num_affaire} – ` : '' }}{{ p.nom_affaire }}</span>
+                <span class="badge">{{ p.nom_prestation }}</span>
+              </li>
             </ul>
-          </template>
-          <p v-else class="texte-petit texte-doux">
-            Sans critère : calculée d'après le temps de reprise par rapport au temps de prod
-            (<RouterLink to="/parametres/rendement-note">Paramètres > Rendement & Note</RouterLink>).
-          </p>
-        </div>
+          </div>
+        </section>
+        <section class="carte encart" :class="{ ouvert: encarts.qualite }">
+          <button type="button" class="tete-encart" :aria-expanded="encarts.qualite" aria-controls="encart-qualite" @click="basculerEncart('qualite')">
+            <i class="bi bi-patch-check" aria-hidden="true" />
+            <span class="titre-bloc">Note de qualité</span>
+            <span class="resume-encart">{{ feuille.utiliser_criteres && feuille.criteres.length ? `${feuille.criteres.length} critère(s)` : 'Sans critère' }}</span>
+            <i class="bi chevron" :class="encarts.qualite ? 'bi-chevron-up' : 'bi-chevron-down'" aria-hidden="true" />
+          </button>
+          <div v-show="encarts.qualite" id="encart-qualite" class="corps-encart">
+            <template v-if="feuille.utiliser_criteres && feuille.criteres.length">
+              <p class="texte-petit texte-doux aide">Moyenne des critères de CTRL (notes de 1 à 5) :</p>
+              <ul class="liste">
+                <li v-for="c in feuille.criteres" :key="c.id"><span class="badge badge-marine">Critère {{ c.numero }}</span> {{ c.commentaire }}</li>
+              </ul>
+            </template>
+            <p v-else class="texte-petit texte-doux">
+              Sans critère : calculée d'après le temps de reprise par rapport au temps de prod
+              (<RouterLink to="/parametres/rendement-note">Paramètres > Rendement & Note</RouterLink>).
+            </p>
+          </div>
+        </section>
       </div>
 
       <div v-if="nouvellesLignes" class="alerte bandeau" role="status">
@@ -420,8 +458,15 @@ const classeNote = (v: string | null) => (v === null ? '' : Number(v) >= 4 ? 'bo
 
 <style scoped>
 .page-large { max-width: none; }
-.infos { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--e4); margin-bottom: var(--e4); }
-.titre-bloc { text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--e2); }
+.infos { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--e3); margin-bottom: var(--e4); align-items: start; }
+.titre-bloc { text-transform: uppercase; letter-spacing: 0.04em; font-size: var(--taille-xs); font-weight: 700; color: var(--texte-doux); }
+.encart { overflow: hidden; }
+.tete-encart { display: flex; align-items: center; gap: var(--e2); width: 100%; padding: var(--e2) var(--e3); border: none; background: none; text-align: left; cursor: pointer; color: var(--marine); }
+.tete-encart:hover { background: var(--surface-douce); }
+.tete-encart:focus-visible { outline: 2px solid var(--marine-clair); outline-offset: -2px; }
+.resume-encart { flex: 1; font-size: var(--taille-xs); color: var(--texte-doux); }
+.chevron { color: var(--texte-doux); }
+.corps-encart { padding: 0 var(--e4) var(--e3); border-top: 1px solid var(--bordure); padding-top: var(--e3); }
 .liste { list-style: none; display: flex; flex-direction: column; gap: var(--e1); font-size: var(--taille-s); }
 .liste li { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; }
 .bloc { display: inline-flex; margin-top: 2px; }

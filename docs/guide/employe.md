@@ -78,6 +78,8 @@ Dans une feuille :
 - les modifications des autres apparaissent **en direct**, et une case en cours de modification par quelqu'un d'autre est encadrée avec son nom ;
 - la colonne **Temps Estimatif** indique le temps prévu pour la quantité ; la ligne devient **orange** quand le Temps de prod en approche, **rouge** quand il l'atteint ou le dépasse ;
 - le bouton **Historique** retrace qui a modifié quoi et quand ;
+- les encarts **Affaires et prestations** et **Note de qualité**, au-dessus du tableau, sont repliés par défaut :
+  cliquez sur leur titre pour les déplier (votre choix est mémorisé) ;
 - l'en-tête du tableau reste visible quand on descend.
 
 ## Affichage Everwin
