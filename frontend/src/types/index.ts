@@ -523,7 +523,8 @@ export interface ArborescenceAffaire {
     projets: {
       id: Identifiant
       nom: string
-      descriptions: { id: Identifiant; nom: string; quantite: string | null; ligne: LigneDeDescription | null }[]
+      /** quantite_modifiable : droit « Pointages > Quantité des descriptions » sur l'affaire */
+      descriptions: { id: Identifiant; nom: string; quantite: string | null; quantite_modifiable?: boolean; ligne: LigneDeDescription | null }[]
     }[]
   }[]
 }

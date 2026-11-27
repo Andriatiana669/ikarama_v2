@@ -27,6 +27,10 @@ MODULES = {
     'pointages_suivi': {'libelle': 'Pointages > Suivi', 'cible': 'personnes',
                         'actions': ['voir', 'modifier', 'supprimer', 'importer', 'exporter'],
                         'aide': 'Les pointages des autres personnes (Suivi, et l’import « pour d’autres » avec la colonne Matricule).'},
+    'pointages_quantite': {'libelle': 'Pointages > Quantité des descriptions', 'cible': 'affaires',
+                           'actions': ['modifier'],
+                           'aide': 'Modifier la quantité d’une description depuis le formulaire de pointage (Mon temps). '
+                                   'Chaque changement est inscrit dans l’historique de la feuille.'},
     'pointages_verification': {'libelle': 'Pointages > Vérification', 'cible': 'personnes',
                                'actions': ['voir', 'exporter'],
                                'aide': 'Les jours pointés et les manques des personnes du périmètre (Vérification, et « Mon équipe » de l’Accueil).'},
@@ -107,6 +111,8 @@ TOUS, RESPONSABLE = 'TOUS', 'RESPONSABLE'
 BASE = {
     # Seul droit de base : chacun voit les feuilles de ses affaires. Tout le reste passe par un rôle.
     'gsheets_feuilles': {'voir': (TOUS, 'MEMBRE')},
+    # Quantité des descriptions : sur les affaires où l'on peut pointer (responsable ou membre)
+    'pointages_quantite': {'modifier': (TOUS, 'MEMBRE')},
     # Planning Projet : chacun voit (et exporte) son propre planning ; planifier passe par un rôle
     'planning_projet': {'voir': (TOUS, 'MOI'), 'exporter': (TOUS, 'MOI')},
     # Affichage Everwin : chacun voit (et exporte) son propre affichage
@@ -114,6 +120,7 @@ BASE = {
 }
 LIBELLE_BASE = {
     'gsheets_feuilles': 'Tout le monde voit les feuilles de ses affaires ; le reste seulement par un rôle',
+    'pointages_quantite': 'Tout le monde, sur les affaires dont il est responsable ou membre',
     'affichage_everwin': 'Tout le monde voit et exporte son propre affichage ; celui des autres seulement par un rôle',
     'planning_projet': 'Tout le monde voit et exporte son propre planning ; celui des autres et la planification par un rôle',
 }

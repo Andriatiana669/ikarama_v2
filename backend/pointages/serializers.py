@@ -25,6 +25,16 @@ class TacheResumeSerializer(serializers.ModelSerializer):
         fields = ['id', 'nom', 'type', 'type_libelle', 'plusieurs_descriptions']
 
 
+def nombre_texte(valeur):
+    """Une quantité lisible pour l'historique : 6500, 12,5 (vide si aucune)."""
+    if valeur is None:
+        return ''
+    texte = format(valeur, 'f')
+    if '.' in texte:
+        texte = texte.rstrip('0').rstrip('.')
+    return texte.replace('.', ',')
+
+
 class PointageSerializer(serializers.ModelSerializer):
     """
     Écriture : {"date", "heure_debut", "heure_fin", "tache", "descriptions": [id, ...], "commentaire"}
@@ -35,11 +45,14 @@ class PointageSerializer(serializers.ModelSerializer):
     descriptions = serializers.PrimaryKeyRelatedField(many=True, queryset=Description.objects.all(), write_only=True)
     parts = serializers.SerializerMethodField()
     marche = serializers.SerializerMethodField()
+    # {"<id description>": "6500"} : nouvelles quantités (Pointages > Quantité des descriptions), facultatif
+    quantites = serializers.DictField(child=serializers.DecimalField(max_digits=14, decimal_places=2, min_value=0),
+                                      write_only=True, required=False)
 
     class Meta:
         model = Pointage
         fields = ['id', 'employe', 'employe_details', 'date', 'heure_debut', 'heure_fin', 'pause', 'tache', 'tache_details',
-                  'descriptions', 'parts', 'marche', 'commentaire', 'minutes_normales', 'minutes_hs', 'modifie_le']
+                  'descriptions', 'quantites', 'parts', 'marche', 'commentaire', 'minutes_normales', 'minutes_hs', 'modifie_le']
         read_only_fields = ['employe', 'minutes_normales', 'minutes_hs']
 
     def _parts(self, obj):
@@ -114,10 +127,42 @@ class PointageSerializer(serializers.ModelSerializer):
             pointage.fragment_commentaire = fragment
             pointage.save(update_fields=['fragment_commentaire'])
 
+    def _appliquer_quantites(self, quantites, descriptions):
+        """
+        Nouvelles quantités des descriptions choisies, enregistrées avant le partage du temps (au prorata des quantités).
+        Droit : Pointages > Quantité des descriptions (Modifier) sur l'affaire. Historique dans chaque feuille concernée.
+        """
+        if not quantites:
+            return
+        from autorisations.droits import peut_sur
+        from gsheets.models import HistoriqueLigne, LigneFeuille
+        from temps_reel.diffusion import feuille_modifiee
+        request = self.context['request']
+        auteur = getattr(request.user, 'employe', None)
+        choisies = {str(d.pk): d for d in descriptions}
+        for identifiant, valeur in quantites.items():
+            description = choisies.get(str(identifiant))
+            if description is None:
+                raise serializers.ValidationError({'quantites': 'Une quantité ne correspond à aucune description choisie.'})
+            if valeur == description.quantite:
+                continue
+            affaire = description.projet.affaire
+            if not peut_sur(request.user, 'pointages_quantite', 'modifier', affaire):
+                raise serializers.ValidationError({'quantites': f'Vous n’avez pas le droit de modifier la quantité de « {description.nom} ».'})
+            ancienne = description.quantite
+            description.quantite = valeur
+            description.save(update_fields=['quantite'])
+            for ligne in LigneFeuille.objects.filter(description=description).select_related('feuille'):
+                HistoriqueLigne.objects.create(feuille=ligne.feuille, ligne=ligne, champ='quantite', libelle='Quantité',
+                                               ancienne_valeur=nombre_texte(ancienne), nouvelle_valeur=nombre_texte(valeur),
+                                               auteur=auteur)
+                feuille_modifiee(ligne.feuille_id)
+
     @transaction.atomic
     def create(self, donnees):
         moi = self._moi()
         descriptions = donnees.pop('descriptions')
+        self._appliquer_quantites(donnees.pop('quantites', None), descriptions)
         pointage = Pointage.objects.create(employe=moi, **donnees)
         lignes = enregistrer_parts(pointage, descriptions)
         self._ajouter_commentaires(pointage)
@@ -129,6 +174,8 @@ class PointageSerializer(serializers.ModelSerializer):
         date_avant = pointage.date
         avant = infos_pour_retrait(pointage)
         descriptions = donnees.pop('descriptions', None)
+        self._appliquer_quantites(donnees.pop('quantites', None),
+                                  descriptions if descriptions is not None else [p.description for p in pointage.parts.select_related('description__projet__affaire')])
         pointage = super().update(pointage, donnees)
         lignes = set(avant[2])
         if descriptions is not None:

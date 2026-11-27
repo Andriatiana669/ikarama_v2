@@ -879,3 +879,53 @@ class DateDuJourTests(TestCase):
         with mock.patch.object(temps, 'datetime', wraps=datetime) as faux:
             faux.now.side_effect = lambda zone=None: fausse_utc.astimezone(zone) if zone else fausse_utc.replace(tzinfo=None)
             self.assertEqual(temps.aujourdhui().isoformat(), '2026-11-26')
+
+
+class MonTempsAmeliorationsTests(DonneesFeuilleMixin, AuthentifieMixin, TestCase):
+    """Quantité modifiée depuis le pointage (avec historique de la feuille) ; pointer pour une autre personne."""
+    from pointages.models import Pointage
+    from pointages.serializers import nombre_texte as _nombre_texte
+    nombre_texte = staticmethod(_nombre_texte)
+
+    def setUp(self):
+        super().setUp()
+        self.creer()
+        self.tache = Tache.objects.create(nom='Saisie', type='PRODUCTION')
+
+    def donnees(self, **autres):
+        lundi = date.today() - timedelta(days=date.today().weekday() + 7)
+        return {'date': lundi.isoformat(), 'heure_debut': '08:00', 'heure_fin': '10:00', 'descriptions': [self.d1.id],
+                'tache': self.tache.id, **autres}
+
+    def test_quantite_modifiee_avec_historique(self):
+        from gsheets.models import HistoriqueLigne
+        avant = self.d1.quantite
+        reponse = self.client.post('/api/pointages/', self.donnees(quantites={str(self.d1.id): '6500'}), format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.d1.refresh_from_db()
+        self.assertEqual(self.d1.quantite, 6500)
+        h = HistoriqueLigne.objects.get(champ='quantite')
+        self.assertEqual((h.libelle, h.nouvelle_valeur, h.auteur.code_barre), ('Quantité', '6500', 'PR00001'))
+        self.assertEqual(h.ancienne_valeur, self.nombre_texte(avant))
+        # Arborescence : quantité modifiable (droit de base, membre de l'affaire)
+        arbre = self.client.get('/api/pointages/arborescence/', {'affaire': self.affaire.id}).data
+        self.assertTrue(arbre['prestations'][0]['projets'][0]['descriptions'][0]['quantite_modifiable'])
+
+    def test_quantite_refusee_hors_droit_et_pointage_annule(self):
+        from autorisations.models import AttributionRole, DroitRole, Role
+        role = Role.objects.create(nom='Sans quantité')
+        DroitRole.objects.create(role=role, module='pointages_quantite', action='modifier', perimetre='TOUTES', effet='REFUSER')
+        AttributionRole.objects.create(role=role, critere='MATRICULE', employe=self.moi)
+        reponse = self.client.post('/api/pointages/', self.donnees(quantites={str(self.d1.id): '1'}), format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertFalse(self.Pointage.objects.exists())          # tout ou rien
+
+    def test_pointer_pour_une_autre_personne(self):
+        reponse = self.client.post(f'/api/pointages/?employe={self.membre.id}', self.donnees(), format='json')
+        self.assertEqual(reponse.status_code, 403)                # sans le droit Modifier du Suivi
+        from autorisations.models import AttributionRole, DroitRole, Role
+        role = Role.objects.create(nom='Suivi')
+        DroitRole.objects.create(role=role, module='pointages_suivi', action='modifier', perimetre='TOUS')
+        AttributionRole.objects.create(role=role, critere='MATRICULE', employe=self.moi)
+        reponse = self.client.post(f'/api/pointages/?employe={self.membre.id}', self.donnees(), format='json')
+        self.assertEqual((reponse.status_code, reponse.data['employe']), (201, self.membre.id))

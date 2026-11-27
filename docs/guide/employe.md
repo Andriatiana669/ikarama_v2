@@ -18,11 +18,17 @@ L'accueil résume votre situation :
 - **Mon planning** : ce qui est planifié pour vous les 7 prochains jours ;
 - **Mes lignes à surveiller** : les lignes de feuille dont vous êtes l'Employé et qui approchent (orange) ou dépassent (rouge) leur Temps Estimatif.
 
-## Pointer son temps (Pointages > Mon temps)
+## Pointer son temps
+
+Sur chaque ligne de pointage : le **crayon** (modifier), la **copie** (**Dupliquer** : un nouveau pointage prérempli,
+même date et mêmes heures, à changer avant d'enregistrer) et la **poubelle** (supprimer). (Pointages > Mon temps)
 
 ### Ajouter un pointage
 
 1. Cliquez sur **Ajouter**. Vous pouvez pointer aujourd'hui, un jour passé ou un jour à venir.
+   Choisissez l'**affaire**, puis le **projet / la commune**, puis la **prestation** (remplie automatiquement quand
+   la commune n'existe que sous une prestation), la tâche et la description. Sous la description, la **Quantité**
+   est modifiable : elle est enregistrée avec le pointage et inscrite dans l'historique de la feuille.
 2. La date et les heures sont proposées automatiquement : le premier créneau libre de la journée (07:30–16:30). Vous pouvez les changer, ou cliquer sur un créneau libre affiché sous les heures.
 3. Cochez **Pause (−1 h)** sur un seul pointage par jour ouvrable (voir plus bas).
 4. Choisissez l'**Affaire** : celles où vous êtes déjà placé dans une feuille apparaissent en premier.

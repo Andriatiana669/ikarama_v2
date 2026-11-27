@@ -28,9 +28,13 @@ const props = defineProps<{
   dateParDefaut: string
   /** Suivi (administrateur) : le pointage d'une autre personne, enregistré par cette source */
   source?: { modifier: (id: Identifiant, d: SaisiePointage) => Promise<Pointage> }
+  /** Dupliquer : un nouveau pointage prérempli avec celui-ci (même date et mêmes heures, à changer) */
+  modele?: Pointage | null
 }>()
-/** Personne pointée : celle du pointage modifié (Suivi), sinon moi */
-const employeVise = computed(() => (props.source ? props.pointage?.employe ?? null : null))
+/** Pointage dont les valeurs remplissent le formulaire : celui modifié, ou le modèle à dupliquer */
+const depart = computed(() => props.pointage ?? props.modele ?? null)
+/** Personne pointée : celle du pointage modifié ou dupliqué (Suivi), sinon moi */
+const employeVise = computed(() => (props.source ? depart.value?.employe ?? null : null))
 const emit = defineEmits<{ enregistre: [] }>()
 const toast = useToast()
 
@@ -41,8 +45,10 @@ const date = ref('')
 const debut = ref('')
 const fin = ref('')
 const affaire = ref<Identifiant | null>(null)
+const nomProjet = ref<string | null>(null)   // Projet / Commune choisi par son nom (avant la prestation)
 const prestation = ref<Identifiant | null>(null)
 const projet = ref<Identifiant | null>(null)
+const quantites = ref<Record<string, string>>({})   // quantités affichées (modifiables) des descriptions choisies
 const choisies = ref<Identifiant[]>([])   // description(s) choisie(s)
 const tache = ref<Identifiant | null>(null)
 const commentaire = ref('')
@@ -77,13 +83,13 @@ let initialisation = false
 watch(ouvert, async (valeur) => {
   if (!valeur) return
   initialisation = true
-  const p = props.pointage
+  const p = depart.value
   date.value = p?.date ?? props.dateParDefaut
   debut.value = p?.heure_debut.slice(0, 5) ?? ''
   fin.value = p?.heure_fin.slice(0, 5) ?? ''
   commentaire.value = p?.commentaire ?? ''
   pause.value = p?.pause ?? false
-  heuresTouchees = false
+  heuresTouchees = !!props.modele   // Dupliquer : on garde les heures du modèle
   creneaux.value = null
   chargerCreneaux()
   tache.value = p?.tache ?? null
@@ -94,7 +100,10 @@ watch(ouvert, async (valeur) => {
   if (affaire.value) await chargerArbre(affaire.value)
   prestation.value = p?.marche.prestation_id ?? prestation.value
   projet.value = p?.marche.projet_id ?? projet.value
+  nomProjet.value = p ? (tousLesProjets.value.find((x) => x.id === projet.value)?.nom ?? null) : nomProjet.value
   choisies.value = p?.marche.description_ids ?? choisies.value
+  quantites.value = {}
+  remplirQuantites()
   await nextTick() // laisse passer les observateurs de la cascade sans rien effacer
   initialisation = false
 })
@@ -110,11 +119,21 @@ async function chargerArbre(id: Identifiant) {
   }
 }
 
-// Cascade : chaque choix remet à zéro la suite ; un seul choix possible -> rempli automatiquement
+// Cascade : Affaire -> Projet / Commune -> Prestation -> Description(s).
+// Une même commune peut exister sous plusieurs prestations : la liste montre chaque nom une fois, puis la prestation
+// propose celles qui ont cette commune (remplie automatiquement s'il n'y en a qu'une). Un seul choix -> rempli.
 const prestations = computed(() => arbre.value?.prestations ?? [])
+const tousLesProjets = computed(() => prestations.value.flatMap((pr) => pr.projets.map((p) => ({ ...p, prestation_id: pr.id }))))
+const cle = (nom: string) => nom.trim().toLowerCase()
+const nomsProjets = computed(() => {
+  const vus = new Map<string, string>()
+  tousLesProjets.value.forEach((p) => vus.has(cle(p.nom)) || vus.set(cle(p.nom), p.nom))
+  return [...vus.values()]
+})
+const projetsDuNom = computed(() => (nomProjet.value ? tousLesProjets.value.filter((p) => cle(p.nom) === cle(nomProjet.value!)) : []))
+const prestationsDuProjet = computed(() => prestations.value.filter((pr) => projetsDuNom.value.some((p) => p.prestation_id === pr.id)))
 const prestationChoisie = computed(() => prestations.value.find((p) => p.id === prestation.value) ?? null)
-const projets = computed(() => prestationChoisie.value?.projets ?? [])
-const projetChoisi = computed(() => projets.value.find((p) => p.id === projet.value) ?? null)
+const projetChoisi = computed(() => tousLesProjets.value.find((p) => p.id === projet.value) ?? null)
 const descriptions = computed(() => projetChoisi.value?.descriptions ?? [])
 const descriptionChoisie = computed(() =>
   choisies.value.length === 1 ? descriptions.value.find((d) => d.id === choisies.value[0]) ?? null : null,
@@ -125,22 +144,47 @@ const seul = <T extends { id: Identifiant }>(liste: T[]) => (liste.length === 1 
 watch(affaire, async (id) => {
   if (initialisation) return
   arbre.value = null
+  nomProjet.value = null
   prestation.value = projet.value = null
   choisies.value = []
   if (id) {
     await chargerArbre(id)
-    prestation.value = seul(prestations.value)
+    if (nomsProjets.value.length === 1) nomProjet.value = nomsProjets.value[0]!
   }
 })
-watch(prestation, () => {
+watch(nomProjet, () => {
   if (initialisation) return
-  projet.value = seul(projets.value)
+  prestation.value = seul(prestationsDuProjet.value)
+  projet.value = prestation.value ? projetsDuNom.value.find((p) => p.prestation_id === prestation.value)?.id ?? null : null
+})
+watch(prestation, (id) => {
+  if (initialisation) return
+  projet.value = id ? projetsDuNom.value.find((p) => p.prestation_id === id)?.id ?? null : null
 })
 watch(projet, () => {
   if (initialisation) return
   const unique = seul(descriptions.value)
   choisies.value = unique ? [unique] : []
 })
+
+// Quantité des descriptions choisies : affichée et modifiable (droit « Pointages > Quantité des descriptions »)
+function remplirQuantites() {
+  for (const d of descriptions.value) {
+    // « 6000.00 » s'affiche « 6000 »
+    if (choisies.value.includes(d.id) && !(String(d.id) in quantites.value)) quantites.value[String(d.id)] = d.quantite === null ? '' : String(Number(d.quantite))
+  }
+}
+watch(choisies, remplirQuantites, { deep: true })
+const quantiteDe = (d: { id: Identifiant; quantite: string | null }) => quantites.value[String(d.id)] ?? d.quantite ?? ''
+const quantitesModifiees = () => {
+  const changes: Record<string, string> = {}
+  for (const d of descriptions.value) {
+    if (!choisies.value.includes(d.id) || !d.quantite_modifiable) continue
+    const v = (quantites.value[String(d.id)] ?? '').toString().replace(',', '.').trim()
+    if (v !== '' && Number(v) !== Number(d.quantite ?? NaN)) changes[String(d.id)] = v
+  }
+  return changes
+}
 
 // Plusieurs descriptions seulement pour une tâche qui le permet
 const multiple = computed(() => !!tacheChoisie.value?.plusieurs_descriptions)
@@ -160,15 +204,15 @@ function basculer(id: Identifiant) {
 const lignesChoisies = computed(() => descriptions.value.filter((d) => choisies.value.includes(d.id)))
 const partage = computed(() => {
   const liste = lignesChoisies.value
-  const auProrata = liste.every((d) => d.quantite !== null && Number(d.quantite) > 0)
-  const quantites = liste.map((d) => (auProrata ? Number(d.quantite) : 1))
-  const total = quantites.reduce((a, b) => a + b, 0) || 1
+  const auProrata = liste.every((d) => quantiteDe(d) !== '' && Number(String(quantiteDe(d)).replace(',', '.')) > 0)
+  const valeurs = liste.map((d) => (auProrata ? Number(String(quantiteDe(d)).replace(',', '.')) : 1))
+  const total = valeurs.reduce((a, b) => a + b, 0) || 1
   return {
     auProrata,
     parts: liste.map((d, i) => ({
       id: d.id,
-      part: quantites[i]! / total,
-      minutes: tempsCompte.value ? Math.round((tempsCompte.value * quantites[i]!) / total) : null,
+      part: valeurs[i]! / total,
+      minutes: tempsCompte.value ? Math.round((tempsCompte.value * valeurs[i]!) / total) : null,
     })),
   }
 })
@@ -193,8 +237,8 @@ const apercu = computed(() => calculerPointage(date.value, debut.value, fin.valu
 async function enregistrer() {
   erreurs.value = {}
   if (!affaire.value) erreurs.value.affaire = 'Choisissez l’affaire.'
-  else if (!prestation.value) erreurs.value.prestation = 'Choisissez la prestation.'
-  else if (!projet.value) erreurs.value.projet = 'Choisissez le projet / la commune.'
+  else if (!nomProjet.value) erreurs.value.projet = 'Choisissez le projet / la commune.'
+  else if (!prestation.value || !projet.value) erreurs.value.prestation = 'Choisissez la prestation.'
   else if (!choisies.value.length) erreurs.value.descriptions = multiple.value ? 'Cochez au moins une description.' : 'Choisissez la description.'
   if (!tache.value) erreurs.value.tache = 'Choisissez la tâche.'
   if (Object.keys(erreurs.value).length) return
@@ -202,17 +246,19 @@ async function enregistrer() {
   const donnees = {
     date: date.value, heure_debut: debut.value, heure_fin: fin.value, pause: pause.value,
     descriptions: choisies.value, tache: tache.value!, commentaire: commentaire.value,
+    ...(Object.keys(quantitesModifiees()).length ? { quantites: quantitesModifiees() } : {}),
   }
   try {
     if (props.pointage) await (props.source ?? pointagesApi).modifier(props.pointage.id, donnees)
+    else if (props.source && employeVise.value) await pointagesApi.creerPour(donnees, employeVise.value)   // dupliqué dans le Suivi
     else await pointagesApi.creer(donnees)
-    toast.succes(props.pointage ? 'Pointage modifié' : 'Pointage ajouté')
+    toast.succes(props.pointage ? 'Pointage modifié' : props.modele ? 'Pointage dupliqué' : 'Pointage ajouté')
     emit('enregistre')
     ouvert.value = false
   } catch (e) {
     if (e instanceof ApiErreur && Object.keys(e.erreurs).length) {
       erreurs.value = e.erreurs
-      if (!['date', 'heure_debut', 'heure_fin', 'pause', 'descriptions', 'tache'].some((c) => c in e.erreurs)) erreurs.value.general = e.message
+      if (!['date', 'heure_debut', 'heure_fin', 'pause', 'descriptions', 'tache', 'quantites'].some((c) => c in e.erreurs)) erreurs.value.general = e.message
     } else erreurs.value.general = messageErreur(e)
   } finally {
     envoi.value = false
@@ -222,7 +268,8 @@ const premier = (cle: string) => (Array.isArray(erreurs.value[cle]) ? erreurs.va
 </script>
 
 <template>
-  <UiModale v-model="ouvert" :titre="pointage ? (source ? `Modifier le pointage de ${pointage.employe_details.nom_affiche}` : 'Modifier le pointage') : 'Ajouter un pointage'" taille="moyenne" :bloquante="envoi">
+  <UiModale v-model="ouvert" :titre="pointage ? (source ? `Modifier le pointage de ${pointage.employe_details.nom_affiche}` : 'Modifier le pointage')
+      : modele ? (source ? `Dupliquer un pointage de ${modele.employe_details.nom_affiche}` : 'Dupliquer un pointage') : 'Ajouter un pointage'" taille="moyenne" :bloquante="envoi">
     <form id="form-pointage" class="pile" novalidate @submit.prevent="enregistrer">
       <p v-if="erreurs.general" class="alerte alerte-erreur" role="alert"><i class="bi bi-exclamation-triangle" aria-hidden="true" />{{ erreurs.general }}</p>
 
@@ -266,18 +313,18 @@ const premier = (cle: string) => (Array.isArray(erreurs.value[cle]) ? erreurs.va
       </UiChamp>
 
       <div class="grille-2">
-        <UiChamp v-slot="{ id }" libelle="Prestation" requis :erreur="premier('prestation')"
-          :aide="affaire && !chargementArbre && !prestations.length ? 'Aucune prestation cochée pour cette affaire.' : undefined">
-          <select :id="id" v-model="prestation" class="saisie" :disabled="!prestations.length">
+        <UiChamp v-slot="{ id }" libelle="Projets / Communes" requis :erreur="premier('projet')"
+          :aide="affaire && !chargementArbre && !nomsProjets.length ? 'Aucun projet / commune pour cette affaire.' : undefined">
+          <select :id="id" v-model="nomProjet" class="saisie" :disabled="!nomsProjets.length">
             <option :value="null" disabled>{{ chargementArbre ? 'Chargement…' : 'Choisir' }}</option>
-            <option v-for="p in prestations" :key="p.id" :value="p.id">{{ p.nom }}</option>
+            <option v-for="n in nomsProjets" :key="n" :value="n">{{ n }}</option>
           </select>
         </UiChamp>
-        <UiChamp v-slot="{ id }" libelle="Projets / Communes" requis :erreur="premier('projet')"
-          :aide="prestation && !projets.length ? 'Aucun projet pour cette prestation.' : undefined">
-          <select :id="id" v-model="projet" class="saisie" :disabled="!projets.length">
-            <option :value="null" disabled>Choisir</option>
-            <option v-for="p in projets" :key="p.id" :value="p.id">{{ p.nom }}</option>
+        <UiChamp v-slot="{ id }" libelle="Prestation" requis :erreur="premier('prestation')"
+          :aide="nomProjet && prestationsDuProjet.length === 1 ? 'Remplie automatiquement : une seule prestation pour ce projet / cette commune.' : undefined">
+          <select :id="id" v-model="prestation" class="saisie" :disabled="!prestationsDuProjet.length">
+            <option :value="null" disabled>{{ nomProjet ? 'Choisir' : 'Choisissez d’abord le projet / la commune' }}</option>
+            <option v-for="p in prestationsDuProjet" :key="p.id" :value="p.id">{{ p.nom }}</option>
           </select>
         </UiChamp>
       </div>
@@ -299,10 +346,20 @@ const premier = (cle: string) => (Array.isArray(erreurs.value[cle]) ? erreurs.va
           </option>
         </select>
       </UiChamp>
-      <div v-else class="champ">
+      <div v-if="!multiple && descriptionChoisie" class="ligne-quantite">
+        <label class="champ-libelle" :for="`quantite-${descriptionChoisie.id}`">Quantité</label>
+        <input :id="`quantite-${descriptionChoisie.id}`" v-model="quantites[String(descriptionChoisie.id)]" class="saisie quantite" type="number" min="0" step="any"
+          :disabled="!descriptionChoisie.quantite_modifiable" :aria-invalid="!!premier('quantites')" />
+        <span class="texte-doux">{{ prestationChoisie?.unite }}</span>
+        <span class="texte-xs texte-doux">{{ descriptionChoisie.quantite_modifiable
+          ? 'Modifiable : enregistrée avec le pointage, et inscrite dans l’historique de la feuille.'
+          : 'Lecture seule (droit « Pointages > Quantité des descriptions »).' }}</span>
+      </div>
+      <span v-if="premier('quantites')" class="champ-erreur" role="alert">{{ premier('quantites') }}</span>
+      <div v-if="multiple" class="champ">
         <span class="champ-libelle">Descriptions <span class="requis">*</span></span>
         <span v-if="premier('descriptions')" class="champ-erreur" role="alert">{{ premier('descriptions') }}</span>
-        <p v-if="!projet" class="texte-xs texte-doux">Choisissez d'abord l'affaire, la prestation et le projet.</p>
+        <p v-if="!projet" class="texte-xs texte-doux">Choisissez d'abord l'affaire, le projet / la commune et la prestation.</p>
         <p v-else-if="!descriptions.length" class="texte-xs texte-doux">Aucune description pour ce projet.</p>
         <ul v-else class="multiples">
           <li v-for="d in descriptions" :key="d.id">
@@ -311,6 +368,11 @@ const premier = (cle: string) => (Array.isArray(erreurs.value[cle]) ? erreurs.va
               <span class="gras">{{ d.nom }}</span>
               <span class="texte-xs texte-doux">{{ formatNombre(d.quantite) }} {{ prestationChoisie?.unite }}{{ d.ligne ? `, ${d.ligne.feuille}` : ', hors feuille' }}</span>
             </label>
+            <span v-if="choisies.includes(d.id)" class="quantite-multiple">
+              <input v-model="quantites[String(d.id)]" class="saisie quantite" type="number" min="0" step="any" :aria-label="`Quantité de ${d.nom}`"
+                :disabled="!d.quantite_modifiable" :title="d.quantite_modifiable ? 'Quantité (modifiable)' : 'Lecture seule'" />
+              <span class="texte-xs texte-doux">{{ prestationChoisie?.unite }}</span>
+            </span>
             <span v-if="partDe(d.id)" class="part">
               {{ Math.round(partDe(d.id)!.part * 100) }} %<template v-if="partDe(d.id)!.minutes"> ({{ formatHeures(partDe(d.id)!.minutes!) }})</template>
             </span>
@@ -361,6 +423,10 @@ const premier = (cle: string) => (Array.isArray(erreurs.value[cle]) ? erreurs.va
 </template>
 
 <style scoped>
+.ligne-quantite { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); margin-top: calc(-1 * var(--e2)); }
+.saisie.quantite { width: 130px; text-align: right; font-weight: 700; }
+.quantite-multiple { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.quantite-multiple .saisie.quantite { width: 100px; height: 30px; }
 .info-ligne { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; padding: var(--e2) var(--e3); border-radius: var(--rayon); background: var(--surface-douce); font-size: var(--taille-s); }
 .creneaux { display: flex; align-items: center; gap: var(--e1); flex-wrap: wrap; color: var(--texte-doux); margin-top: calc(-1 * var(--e2)); }
 .creneau { padding: 1px 8px; border: 1px dashed var(--marine-clair); border-radius: 999px; background: none; color: var(--marine); font-size: var(--taille-xs); font-weight: 600; cursor: pointer; }

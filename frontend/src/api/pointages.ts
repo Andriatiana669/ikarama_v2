@@ -24,11 +24,16 @@ export interface SaisiePointage {
   descriptions: Identifiant[]
   tache: Identifiant
   commentaire: string
+  /** Nouvelles quantités des descriptions choisies { id: valeur } (historique dans la feuille) */
+  quantites?: Record<string, string>
 }
 
 const ressource = creerRessource<Pointage, SaisiePointage>('/pointages/')
 export const pointagesApi = {
   ...ressource,
+  /** Créer pour une autre personne (Dupliquer dans Pointages > Suivi : droit « Modifier » du Suivi sur elle) */
+  creerPour: async (d: SaisiePointage, employe: Identifiant): Promise<Pointage> =>
+    (await apiClient.post('/pointages/', d, { params: { employe } })).data,
   /** Totaux et erreurs de pointage de la période */
   resume: (debut: string, fin: string) => ressource.action<ResumePointage>(undefined, 'resume', { debut, fin }, 'get'),
   /** Mes affaires (ou celles de ?employe= pour un administrateur), dans l'ordre de priorité */

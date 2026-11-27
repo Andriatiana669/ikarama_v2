@@ -55,6 +55,10 @@ Marchés > Statuts (rôle « En train de faire »).
 **Accueil > Mon équipe** affiche les pointages incomplets de la **semaine en cours** (du lundi au dimanche, jours
 ouvrables jusqu'à aujourd'hui) pour les personnes du périmètre « Voir » de **Pointages > Vérification**.
 
+Le module **Pointages > Quantité des descriptions** (Modifier) permet de changer la quantité d'une description depuis
+le formulaire de pointage ; droit de base : tout le monde, sur les affaires dont il est responsable ou membre.
+Chaque changement est inscrit dans l'historique de la feuille. Dans le Suivi, **Dupliquer** suit le droit Modifier.
+
 Les postes et pôles sont comparés **sans tenir compte des majuscules, des accents ni des espaces en trop** :
 un rôle attribué au poste « Chef de projet » s'applique aussi à une fiche RH qui dit « Chef de Projet ».
 Quand un rôle, un droit ou une attribution change, les pages ouvertes **relisent leurs droits aussitôt** (sans F5).

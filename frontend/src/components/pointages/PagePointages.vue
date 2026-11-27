@@ -150,8 +150,16 @@ async function exporter() {
 const formulaire = ref(false)
 const importOuvert = ref(false)
 const enCours = ref<Pointage | null>(null)
+const modele = ref<Pointage | null>(null)   // Dupliquer : nouveau pointage prérempli
 function ouvrir(p: Pointage | null = null) {
   enCours.value = p
+  modele.value = null
+  formulaire.value = true
+}
+/** Dupliquer : le formulaire d'ajout prérempli (même date et mêmes heures, à changer avant d'enregistrer) */
+function dupliquer(p: Pointage) {
+  enCours.value = null
+  modele.value = p
   formulaire.value = true
 }
 async function supprimer(p: Pointage) {
@@ -245,6 +253,7 @@ const totalMinutes = computed(() => (resume.value ? resume.value.minutes_normale
             <tr v-for="p in jour.liste" :key="p.id">
               <td class="col-action">
                 <UiBouton v-if="!tous || auth.peut('modifier', 'pointages_suivi')" variante="fantome" icone="pencil" petit icone-seule @click="ouvrir(p)">Modifier</UiBouton>
+                <UiBouton v-if="!tous || auth.peut('modifier', 'pointages_suivi')" variante="fantome" icone="copy" petit icone-seule @click="dupliquer(p)">Dupliquer</UiBouton>
                 <UiBouton v-if="!tous || auth.peut('supprimer', 'pointages_suivi')" variante="fantome" icone="trash" petit icone-seule @click="supprimer(p)">Supprimer</UiBouton>
               </td>
               <td v-if="visible('employe')"><UiEmploye :employe="p.employe_details" sans-matricule /></td>
@@ -300,7 +309,7 @@ const totalMinutes = computed(() => (resume.value ? resume.value.minutes_normale
     </section>
 
     <ImportExcel v-if="!tous" v-model="importOuvert" titre="Importer des pointages" nom-modele="Modele_import_pointages" :source="pointagesApi" @importe="charger" />
-    <FormulairePointage v-model="formulaire" :pointage="enCours" :taches="taches" :date-par-defaut="fin"
+    <FormulairePointage v-model="formulaire" :pointage="enCours" :modele="modele" :taches="taches" :date-par-defaut="fin"
       :source="tous ? suiviPointagesApi : undefined" @enregistre="charger" />
   </div>
 </template>

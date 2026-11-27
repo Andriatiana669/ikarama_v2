@@ -93,6 +93,18 @@ class PointageViewSet(ImportExcelMixin, FiltresMixin, ExportExcelMixin, viewsets
                       'creneaux': 'voir',
                       'modele': 'voir', 'importer': 'creer'}
 
+    def get_serializer_context(self):
+        contexte = super().get_serializer_context()
+        # Créer pour une autre personne (Dupliquer dans Pointages > Suivi) : droit « Modifier » du Suivi sur elle
+        if getattr(self, 'action', None) == 'create' and self.request.query_params.get('employe'):
+            personne = employe_vise(self.request)
+            if personne is not None and personne != moi(self.request):
+                contexte['employe'] = personne
+            else:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied('Vous n’avez pas le droit de pointer pour cette personne.')
+        return contexte
+
     # --- Import Excel -----------------------------------------------------------
     import_nom = 'Pointages'
     import_colonnes = [
@@ -264,6 +276,8 @@ class PointageViewSet(ImportExcelMixin, FiltresMixin, ExportExcelMixin, viewsets
                               for t, (champ, _, _) in COLONNES.items()},
             }
 
+        from autorisations.droits import peut_sur
+        quantite_modifiable = peut_sur(request.user, 'pointages_quantite', 'modifier', affaire)
         projets = (Projet.objects.filter(affaire=affaire).select_related('prestation').order_by('ordre', 'id')
                    .prefetch_related(Prefetch('descriptions', queryset=Description.objects.order_by('ordre', 'id'))))
         par_prestation = {}
@@ -272,6 +286,7 @@ class PointageViewSet(ImportExcelMixin, FiltresMixin, ExportExcelMixin, viewsets
                 'id': projet.id, 'nom': projet.nom,
                 'descriptions': [{
                     'id': d.id, 'nom': d.nom, 'quantite': str(d.quantite) if d.quantite is not None else None,
+                    'quantite_modifiable': quantite_modifiable,
                     'ligne': infos_ligne(lignes.get(d.id)),
                 } for d in projet.descriptions.all()],
             })
