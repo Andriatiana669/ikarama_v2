@@ -58,6 +58,11 @@ const colonnes = computed<Colonne[]>(() => [
   { cle: 'quantite', libelle: `Quantité${unite.value ? ` (${unite.value})` : ''}`, triable: true, alignement: 'droite' },
   { cle: 'rendement_valeur', libelle: 'Rendement objectif / j', alignement: 'droite' },
   { cle: 'date_livraison', libelle: 'Date de livraison', triable: true },
+  // Report DT : surface saisie et linéaire total calculé (somme des quantités linéaires)
+  ...(props.affaire?.report_dt ? [
+    { cle: 'surface_m2', libelle: 'Surface (m²)', alignement: 'droite' as const },
+    { cle: 'lineaire_total', libelle: 'Linéaire total (ML)', alignement: 'droite' as const },
+  ] : []),
   { cle: 'statut', libelle: 'Statut' },
   { cle: 'temps', libelle: 'Temps' },
   ...(props.tache ? [{ cle: 'temps_tache', libelle: `Temps « ${props.tache.nom} »` }] : []),
@@ -75,6 +80,10 @@ const champs = computed<ChampFormulaire[]>(() => [
     })),
   },
   { cle: 'date_livraison', libelle: 'Date de livraison', type: 'date', requis: true },
+  ...(props.affaire?.report_dt ? [{
+    cle: 'surface_m2', libelle: 'Surface (m²)', type: 'nombre' as const,
+    aide: 'Report DT : arrondie à 2 décimales, peut rester vide. Le linéaire total est la somme des quantités linéaires des descriptions ; la Quantité de chaque description en est calculée.',
+  }] : []),
 ])
 
 const titre = computed(() => (props.prestation ? `Projets / Communes – ${props.prestation.nom}` : 'Projets / Communes'))
@@ -103,6 +112,8 @@ const auth = useAuthStore()
     <template #actions>
       <UiBouton v-if="!inactif && !lecture && auth.peut('creer', 'marches_projets')" variante="secondaire" petit icone="plus-lg" @click="edition.ouvrir()">Nouveau projet</UiBouton>
     </template>
+    <template #cellule-surface_m2="{ ligne }">{{ ligne.surface_m2 === null ? '—' : formatNombre(ligne.surface_m2) }}</template>
+    <template #cellule-lineaire_total="{ ligne }">{{ ligne.lineaire_total === null ? '—' : formatNombre(ligne.lineaire_total) }}</template>
     <template #cellule-nom="{ ligne }"><span class="gras">{{ ligne.nom }}</span></template>
     <template #cellule-quantite="{ ligne }">
       <span title="Somme des quantités des descriptions">{{ formatNombre(ligne.quantite) }}</span>

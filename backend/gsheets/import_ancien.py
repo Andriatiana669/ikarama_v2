@@ -79,7 +79,12 @@ class ImportAncienViewSet(ImportExcelMixin, viewsets.GenericViewSet):
                           autres_libelles=['Projet / Commune', 'Projet', 'Commune'], aide='Créé s’il n’existe pas.'),
             ColonneImport('description', 'Description', requis=True, largeur=22, exemple='Ménages', aide='Créée si elle n’existe pas.'),
             ColonneImport('unite', 'Unité', lecture_seule=True, largeur=10, aide='Ignorée : unité de la prestation.'),
-            ColonneImport('quantite', 'Quantité', largeur=10, exemple='1000'),
+            ColonneImport('quantite', 'Quantité', largeur=10, exemple='1000',
+                          aide='Ignorée pour une affaire Report DT (calculée depuis la Quantité linéaire et la Surface).'),
+            ColonneImport('surface_m2', 'Surface (m²)', largeur=12, exemple='1250.5',
+                          aide='Affaire Report DT : surface du projet / de la commune (2 décimales, arrondie).'),
+            ColonneImport('quantite_lineaire', 'Quantité linéaire (ML)', largeur=14, exemple='42.25',
+                          aide='Affaire Report DT : quantité linéaire de la description (2 décimales, arrondie).'),
             ColonneImport('temps_prod', 'Temps de prod', largeur=12, exemple='7.5', aide='En heures.'),
             ColonneImport('date_debut', 'Date de début', largeur=14, exemple='02/11/2026'),
             ColonneImport('statut', 'Statut', largeur=14, exemple='En cours', aide='Nom d’un statut existant.'),
@@ -151,15 +156,36 @@ class ImportAncienViewSet(ImportExcelMixin, viewsets.GenericViewSet):
                                            date_livraison=livraison, cree_par=utilisateur)
             cree.append('projet')
 
+        # Report DT : surface du projet et quantité linéaire de la description (arrondies à 2 décimales)
+        from marches.report_dt import arrondir, recalculer
+
+        def arrondi(cle):
+            try:
+                return arrondir(valeurs.get(cle)) if texte(cle) else None
+            except ValueError as e:
+                raise serializers.ValidationError({cle: str(e)})
+        surface, lineaire = arrondi('surface_m2'), arrondi('quantite_lineaire')
+        if surface is not None and projet.surface_m2 != surface:
+            projet.surface_m2 = surface
+            projet.save(update_fields=['surface_m2'])
+
         # Description (la ligne de feuille est créée automatiquement)
-        quantite = nombre(valeurs.get('quantite'), 'quantite')
+        quantite = None if affaire.report_dt else nombre(valeurs.get('quantite'), 'quantite')
         description = Description.objects.filter(projet=projet, nom__iexact=texte('description')).first()
         if description is None:
-            description = Description.objects.create(projet=projet, nom=texte('description'), quantite=quantite, cree_par=utilisateur)
+            description = Description.objects.create(projet=projet, nom=texte('description'), quantite=quantite,
+                                                     quantite_lineaire=lineaire, cree_par=utilisateur)
             cree.append('description')
-        elif quantite is not None and description.quantite != quantite:
-            description.quantite = quantite
-            description.save()
+        else:
+            if quantite is not None and description.quantite != quantite:
+                description.quantite = quantite
+                description.save()
+            if lineaire is not None and description.quantite_lineaire != lineaire:
+                description.quantite_lineaire = lineaire
+                description.save(update_fields=['quantite_lineaire'])
+        if affaire.report_dt and (surface is not None or lineaire is not None):
+            recalculer(projet, utilisateur)
+            description.refresh_from_db(fields=['quantite'])
         synchroniser(feuille)
         ligne = LigneFeuille.objects.filter(feuille=feuille, description=description).first()
         if ligne is None:

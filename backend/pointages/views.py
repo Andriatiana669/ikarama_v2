@@ -282,19 +282,25 @@ class PointageViewSet(ImportExcelMixin, FiltresMixin, ExportExcelMixin, viewsets
                    .prefetch_related(Prefetch('descriptions', queryset=Description.objects.order_by('ordre', 'id'))))
         par_prestation = {}
         for projet in projets:
+            descriptions_projet = list(projet.descriptions.all())
             par_prestation.setdefault(projet.prestation_id, []).append({
                 'id': projet.id, 'nom': projet.nom,
+                # Report DT : Quantité = Quantité linéaire × Surface ÷ Linéaire total
+                'surface_m2': str(projet.surface_m2) if projet.surface_m2 is not None else None,
+                'lineaire_total': str(sum((d.quantite_lineaire for d in descriptions_projet if d.quantite_lineaire is not None), 0)),
                 'descriptions': [{
                     'id': d.id, 'nom': d.nom, 'quantite': str(d.quantite) if d.quantite is not None else None,
                     'quantite_modifiable': quantite_modifiable,
+                    'quantite_lineaire': str(d.quantite_lineaire) if d.quantite_lineaire is not None else None,
                     'ligne': infos_ligne(lignes.get(d.id)),
-                } for d in projet.descriptions.all()],
+                } for d in descriptions_projet],
             })
         prestations = [{
             'id': lien.prestation_id, 'nom': lien.prestation.nom, 'unite': lien.prestation.unite,
             'projets': par_prestation.get(lien.prestation_id, []),
         } for lien in AffairePrestation.objects.filter(affaire=affaire).select_related('prestation').order_by('ordre', 'id')]
-        return Response({'id': affaire.id, 'num_affaire': affaire.num_affaire, 'nom': affaire.nom, 'prestations': prestations})
+        return Response({'id': affaire.id, 'num_affaire': affaire.num_affaire, 'nom': affaire.nom, 'report_dt': affaire.report_dt,
+                         'prestations': prestations})
 
     @action(detail=False, methods=['get'])
     def creneaux(self, request):

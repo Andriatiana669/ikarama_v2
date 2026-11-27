@@ -58,6 +58,7 @@ const unite = computed(() => props.projet?.unite || props.prestation?.unite || '
 const colonnes = computed<Colonne[]>(() => [
   { cle: 'numero', libelle: 'ID', triable: true, largeur: '52px' },
   { cle: 'nom', libelle: 'Description', triable: true },
+  ...(props.affaire?.report_dt ? [{ cle: 'quantite_lineaire', libelle: 'Quantité linéaire (ML)', alignement: 'droite' as const }] : []),
   { cle: 'quantite', libelle: `Quantité${unite.value ? ` (${unite.value})` : ''}`, triable: true, alignement: 'droite' },
   { cle: 'temps', libelle: 'Temps' },
   { cle: 'statut', libelle: 'Statut' },
@@ -65,10 +66,15 @@ const colonnes = computed<Colonne[]>(() => [
 
 const champs = computed<ChampFormulaire[]>(() => [
   { cle: 'nom', libelle: 'Description', type: 'texte', requis: true, pleineLargeur: true },
-  {
-    cle: 'quantite', libelle: `Quantité${unite.value ? ` (${unite.value})` : ''}`, type: 'nombre',
-    aide: 'Ajoutée automatiquement à la quantité du projet.',
-  },
+  ...(props.affaire?.report_dt
+    ? [{
+        cle: 'quantite_lineaire', libelle: 'Quantité linéaire (ML)', type: 'nombre' as const,
+        aide: `Report DT : arrondie à 2 décimales, peut rester vide. Quantité = Quantité linéaire × Surface (${props.projet?.surface_m2 ?? '—'} m²) ÷ Linéaire total, calculée automatiquement.`,
+      }]
+    : [{
+        cle: 'quantite', libelle: `Quantité${unite.value ? ` (${unite.value})` : ''}`, type: 'nombre' as const,
+        aide: 'Ajoutée automatiquement à la quantité du projet.',
+      }]),
 ])
 
 const titre = computed(() => (props.projet ? `Descriptions – ${props.projet.nom}` : 'Descriptions'))
@@ -101,6 +107,7 @@ const auth = useAuthStore()
         Nouvelle description
       </UiBouton>
     </template>
+    <template #cellule-quantite_lineaire="{ ligne }">{{ ligne.quantite_lineaire === null ? '—' : formatNombre(ligne.quantite_lineaire) }}</template>
     <template #cellule-nom="{ ligne }"><span class="gras">{{ ligne.nom }}</span></template>
     <template #cellule-quantite="{ ligne }">{{ formatNombre(ligne.quantite) }}</template>
     <template #cellule-temps="{ ligne }">

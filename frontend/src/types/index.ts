@@ -184,6 +184,8 @@ export interface Affaire {
   modifie_le: string
   /** Suivie au pointage sans feuille (non signalée dans les Contrôles de cohérence) */
   pointage_seul?: boolean
+  /** Report DT : Quantité = Quantité linéaire × Surface ÷ Linéaire total */
+  report_dt?: boolean
 }
 
 export interface Projet {
@@ -205,6 +207,9 @@ export interface Projet {
   nb_descriptions: number
   cree_par_details: EmployeResume | null
   cree_le: string
+  /** Report DT : surface (m²) saisie et linéaire total (ML) calculé */
+  surface_m2?: string | null
+  lineaire_total?: string | null
 }
 
 /** Élément d'un catalogue commun (Tâches, Statuts) */
@@ -223,6 +228,8 @@ export interface ElementCatalogue {
   avancement_complet?: boolean
   /** Planning Projet : les lignes à ce statut disent ce que fait la personne */
   en_train_de_faire?: boolean
+  /** Contrôles de cohérence : description à ce statut non signalée « sans quantité » (plusieurs statuts) */
+  ignorer_sans_quantite?: boolean
   /** Tâches : relie le temps pointé à une colonne des feuilles */
   type?: TypeTache
   type_libelle?: string
@@ -248,6 +255,8 @@ export interface DescriptionProjet {
   statut: StatutSuivi | null
   cree_par_details: EmployeResume | null
   cree_le: string
+  /** Report DT : quantité linéaire (ML) ; la Quantité en est calculée */
+  quantite_lineaire?: string | null
 }
 
 // ------------------------------------------------------------------
@@ -516,6 +525,8 @@ export interface ArborescenceAffaire {
   id: Identifiant
   num_affaire: string
   nom: string
+  /** Report DT : Quantité = Quantité linéaire × Surface ÷ Linéaire total */
+  report_dt?: boolean
   prestations: {
     id: Identifiant
     nom: string
@@ -523,8 +534,12 @@ export interface ArborescenceAffaire {
     projets: {
       id: Identifiant
       nom: string
+      surface_m2?: string | null
+      lineaire_total?: string | null
       /** quantite_modifiable : droit « Pointages > Quantité des descriptions » sur l'affaire */
-      descriptions: { id: Identifiant; nom: string; quantite: string | null; quantite_modifiable?: boolean; ligne: LigneDeDescription | null }[]
+      descriptions: { id: Identifiant; nom: string; quantite: string | null; quantite_modifiable?: boolean
+        /** Report DT : quantité linéaire (ML) ; la Quantité en est calculée */
+        quantite_lineaire?: string | null; ligne: LigneDeDescription | null }[]
     }[]
   }[]
 }

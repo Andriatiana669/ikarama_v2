@@ -25,14 +25,7 @@ class TacheResumeSerializer(serializers.ModelSerializer):
         fields = ['id', 'nom', 'type', 'type_libelle', 'plusieurs_descriptions']
 
 
-def nombre_texte(valeur):
-    """Une quantité lisible pour l'historique : 6500, 12,5 (vide si aucune)."""
-    if valeur is None:
-        return ''
-    texte = format(valeur, 'f')
-    if '.' in texte:
-        texte = texte.rstrip('0').rstrip('.')
-    return texte.replace('.', ',')
+from gsheets.services import nombre_texte  # noqa: E402  (réexporté)
 
 
 class PointageSerializer(serializers.ModelSerializer):
@@ -46,13 +39,14 @@ class PointageSerializer(serializers.ModelSerializer):
     parts = serializers.SerializerMethodField()
     marche = serializers.SerializerMethodField()
     # {"<id description>": "6500"} : nouvelles quantités (Pointages > Quantité des descriptions), facultatif
-    quantites = serializers.DictField(child=serializers.DecimalField(max_digits=14, decimal_places=2, min_value=0),
-                                      write_only=True, required=False)
+    quantites = serializers.DictField(child=serializers.CharField(allow_blank=True), write_only=True, required=False)
+    # Affaires Report DT : {"<id description>": "12.5"} quantités linéaires (la Quantité en est calculée)
+    quantites_lineaires = serializers.DictField(child=serializers.CharField(allow_blank=True), write_only=True, required=False)
 
     class Meta:
         model = Pointage
         fields = ['id', 'employe', 'employe_details', 'date', 'heure_debut', 'heure_fin', 'pause', 'tache', 'tache_details',
-                  'descriptions', 'quantites', 'parts', 'marche', 'commentaire', 'minutes_normales', 'minutes_hs', 'modifie_le']
+                  'descriptions', 'quantites', 'quantites_lineaires', 'parts', 'marche', 'commentaire', 'minutes_normales', 'minutes_hs', 'modifie_le']
         read_only_fields = ['employe', 'minutes_normales', 'minutes_hs']
 
     def _parts(self, obj):
@@ -127,42 +121,65 @@ class PointageSerializer(serializers.ModelSerializer):
             pointage.fragment_commentaire = fragment
             pointage.save(update_fields=['fragment_commentaire'])
 
-    def _appliquer_quantites(self, quantites, descriptions):
+    def _appliquer_quantites(self, quantites, quantites_lineaires, descriptions):
         """
         Nouvelles quantités des descriptions choisies, enregistrées avant le partage du temps (au prorata des quantités).
+        Affaires Report DT : on saisit la quantité linéaire, et les Quantités du projet sont recalculées.
         Droit : Pointages > Quantité des descriptions (Modifier) sur l'affaire. Historique dans chaque feuille concernée.
         """
-        if not quantites:
+        if not quantites and not quantites_lineaires:
             return
         from autorisations.droits import peut_sur
-        from gsheets.models import HistoriqueLigne, LigneFeuille
-        from temps_reel.diffusion import feuille_modifiee
+        from gsheets.services import historiser_quantite
+        from marches.report_dt import arrondir, recalculer
         request = self.context['request']
         auteur = getattr(request.user, 'employe', None)
         choisies = {str(d.pk): d for d in descriptions}
-        for identifiant, valeur in quantites.items():
+
+        def description_de(identifiant):
             description = choisies.get(str(identifiant))
             if description is None:
                 raise serializers.ValidationError({'quantites': 'Une quantité ne correspond à aucune description choisie.'})
-            if valeur == description.quantite:
-                continue
-            affaire = description.projet.affaire
-            if not peut_sur(request.user, 'pointages_quantite', 'modifier', affaire):
+            if not peut_sur(request.user, 'pointages_quantite', 'modifier', description.projet.affaire):
                 raise serializers.ValidationError({'quantites': f'Vous n’avez pas le droit de modifier la quantité de « {description.nom} ».'})
-            ancienne = description.quantite
-            description.quantite = valeur
+            return description
+
+        def valeur(texte):
+            try:
+                return arrondir(texte)
+            except ValueError as e:
+                raise serializers.ValidationError({'quantites': str(e)})
+
+        projets = {}
+        for identifiant, texte in (quantites_lineaires or {}).items():
+            description = description_de(identifiant)
+            nouvelle = valeur(texte)
+            if not description.projet.affaire.report_dt:
+                raise serializers.ValidationError({'quantites': f'« {description.nom} » n’est pas dans une affaire Report DT.'})
+            if nouvelle != description.quantite_lineaire:
+                historiser_quantite(description, description.quantite_lineaire, nouvelle, auteur,
+                                    libelle='Quantité linéaire (ML)', champ='quantite_lineaire')
+                description.quantite_lineaire = nouvelle
+                description.save(update_fields=['quantite_lineaire'])
+                projets[description.projet_id] = description.projet
+        for identifiant, texte in (quantites or {}).items():
+            description = description_de(identifiant)
+            nouvelle = valeur(texte)
+            if description.projet.affaire.report_dt or nouvelle == description.quantite:
+                continue   # Report DT : la Quantité est calculée, jamais saisie
+            historiser_quantite(description, description.quantite, nouvelle, auteur)
+            description.quantite = nouvelle
             description.save(update_fields=['quantite'])
-            for ligne in LigneFeuille.objects.filter(description=description).select_related('feuille'):
-                HistoriqueLigne.objects.create(feuille=ligne.feuille, ligne=ligne, champ='quantite', libelle='Quantité',
-                                               ancienne_valeur=nombre_texte(ancienne), nouvelle_valeur=nombre_texte(valeur),
-                                               auteur=auteur)
-                feuille_modifiee(ligne.feuille_id)
+        for projet in projets.values():
+            for d in recalculer(projet, auteur):
+                if str(d.pk) in choisies:
+                    choisies[str(d.pk)].quantite = d.quantite   # le partage du temps utilise la nouvelle Quantité
 
     @transaction.atomic
     def create(self, donnees):
         moi = self._moi()
         descriptions = donnees.pop('descriptions')
-        self._appliquer_quantites(donnees.pop('quantites', None), descriptions)
+        self._appliquer_quantites(donnees.pop('quantites', None), donnees.pop('quantites_lineaires', None), descriptions)
         pointage = Pointage.objects.create(employe=moi, **donnees)
         lignes = enregistrer_parts(pointage, descriptions)
         self._ajouter_commentaires(pointage)
@@ -174,7 +191,7 @@ class PointageSerializer(serializers.ModelSerializer):
         date_avant = pointage.date
         avant = infos_pour_retrait(pointage)
         descriptions = donnees.pop('descriptions', None)
-        self._appliquer_quantites(donnees.pop('quantites', None),
+        self._appliquer_quantites(donnees.pop('quantites', None), donnees.pop('quantites_lineaires', None),
                                   descriptions if descriptions is not None else [p.description for p in pointage.parts.select_related('description__projet__affaire')])
         pointage = super().update(pointage, donnees)
         lignes = set(avant[2])

@@ -57,7 +57,8 @@ ouvrables jusqu'à aujourd'hui) pour les personnes du périmètre « Voir » de 
 
 Le module **Pointages > Quantité des descriptions** (Modifier) permet de changer la quantité d'une description depuis
 le formulaire de pointage ; droit de base : tout le monde, sur les affaires dont il est responsable ou membre.
-Chaque changement est inscrit dans l'historique de la feuille. Dans le Suivi, **Dupliquer** suit le droit Modifier.
+Chaque changement est inscrit dans l'historique de la feuille (pour une affaire Report DT : la Quantité linéaire).
+L'**Import ancienne donnée** accepte les colonnes Surface (m²) et Quantité linéaire (ML). Dans le Suivi, **Dupliquer** suit le droit Modifier.
 
 Les postes et pôles sont comparés **sans tenir compte des majuscules, des accents ni des espaces en trop** :
 un rôle attribué au poste « Chef de projet » s'applique aussi à une fiche RH qui dit « Chef de Projet ».
@@ -89,7 +90,8 @@ Les règles métier restent vraies même avec un rôle : par exemple, une case p
 ### Contrôles de cohérence
 
 Le contrôle « Réglages manquants » signale aussi une vérification des certificats HTTPS désactivée (`CA_BUNDLE=desactive`
-dans le fichier .env du serveur). Les affaires cochées « Pointage seulement » ne sont pas signalées comme « pointées hors feuille ». Chaque contrôle indique son nombre de problèmes, sa gravité (À corriger, À vérifier, Information) et la liste des éléments avec un lien **Corriger** : descriptions pointées hors feuille, lignes avec du temps sans Employé ou sans Date de début, personnes hors de l'équipe de l'affaire, projets sans description, descriptions sans quantité, prestations sans rendement objectif, affaires sans responsable, jours pointés sans pause, réglages manquants.
+dans le fichier .env du serveur). Les descriptions dont la ligne est à un statut « Ignorer la description sans quantité » ne sont pas signalées « sans quantité ».
+Les affaires cochées « Pointage seulement » ne sont pas signalées comme « pointées hors feuille ». Chaque contrôle indique son nombre de problèmes, sa gravité (À corriger, À vérifier, Information) et la liste des éléments avec un lien **Corriger** : descriptions pointées hors feuille, lignes avec du temps sans Employé ou sans Date de début, personnes hors de l'équipe de l'affaire, projets sans description, descriptions sans quantité, prestations sans rendement objectif, affaires sans responsable, jours pointés sans pause, réglages manquants.
 
 Relancez les contrôles après vos corrections.
 

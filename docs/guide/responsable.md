@@ -30,7 +30,9 @@ Les colonnes **Temps** et **Statut** sont calculées en direct depuis les feuill
 Les catalogues se gèrent en bas de page :
 
 - **Tâches** : leur type (Production, Contrôle, Reprise, Autre) décide de la colonne de la feuille qui reçoit le temps ; « Plusieurs descriptions » et « Ajouter au temps du projet » se règlent ici.
-- **Statuts** : couleur et rôles (par défaut, prioritaire au pointage, active la note de rendement, avancement 100 %, en train de faire).
+- **Statuts** : couleur et rôles (par défaut, prioritaire au pointage, active la note de rendement, avancement 100 %, en train de faire),
+  et l'option **Ignorer la description sans quantité** (plusieurs statuts possibles) : les descriptions à ces statuts ne
+  sont pas signalées dans les Contrôles de cohérence.
 
 ### Durée estimatif
 

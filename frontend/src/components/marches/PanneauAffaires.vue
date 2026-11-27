@@ -56,7 +56,7 @@ const colonnes = computed<Colonne[]>(() => [
   { cle: 'statut', libelle: 'Statut', masqueeParDefaut: secondaire.value },
   { cle: 'responsables', libelle: 'Responsable', cleExport: 'responsables_details' },
   { cle: 'membres', libelle: 'Membres', cleExport: 'membres_details' },
-  { cle: 'pointage_seul', libelle: 'Pointage seul', cleExport: 'pointage_seul' },
+  { cle: 'pointage_seul', libelle: 'Options', cleExport: 'pointage_seul' },
   { cle: 'cree_par', libelle: 'Créée par', cleExport: 'cree_par_details', masqueeParDefaut: secondaire.value },
   { cle: 'cree_le', libelle: 'Créée le', triable: true, masqueeParDefaut: secondaire.value },
 ])
@@ -127,6 +127,8 @@ const champs: ChampFormulaire[] = [
   { cle: 'membres', libelle: 'Membres', type: 'employes', requis: true, pleineLargeur: true, boutonTous: true },
   { cle: 'pointage_seul', libelle: 'Pointage seulement (pas de feuille)', type: 'case', pleineLargeur: true,
     aide: 'Affaire suivie au pointage sans feuille : les Contrôles de cohérence ne la signalent pas. On peut quand même lui créer une feuille.' },
+  { cle: 'report_dt', libelle: 'Report DT', type: 'case', pleineLargeur: true,
+    aide: 'Surface (m²) par projet / commune et Quantité linéaire (ML) par description : Quantité = Quantité linéaire × Surface ÷ Linéaire total (somme du projet).' },
 ]
 // Paramètres > Autorisation : Ajouter un marché (affaires en cours) et Archives
 const auth = useAuthStore()
@@ -174,7 +176,9 @@ const auth = useAuthStore()
     <template #cellule-pointage_seul="{ ligne }">
       <span v-if="ligne.pointage_seul" class="badge badge-marine" title="Suivie au pointage sans feuille : non signalée dans les Contrôles">
         <i class="bi bi-stopwatch" aria-hidden="true" /> Pointage seul</span>
-      <span v-else class="texte-leger">—</span>
+      <span v-if="ligne.report_dt" class="badge" title="Quantité calculée depuis la Surface et la Quantité linéaire">
+        <i class="bi bi-rulers" aria-hidden="true" /> Report DT</span>
+      <span v-if="!ligne.pointage_seul && !ligne.report_dt" class="texte-leger">—</span>
     </template>
     <template #cellule-membres="{ ligne }"><UiPersonnes :personnes="ligne.membres_details" /></template>
     <template #cellule-cree_par="{ ligne }"><UiEmploye :employe="ligne.cree_par_details" sans-matricule /></template>

@@ -85,9 +85,12 @@ def controles():
             lambda p: {'libelle': p.nom, 'detail': f'{_nom_affaire(p.affaire)} › {p.prestation.nom}', 'lien': _lien_marche(p)})
 
     # 6. Descriptions sans quantité (pas de rendement, pas de Temps Estimatif)
+    #    (sauf celles dont la ligne de feuille est à un statut « Ignorer la description sans quantité »)
     ajouter('description_sans_quantite', 'Descriptions sans quantité',
-            'Pas de rendement ni de Temps Estimatif possible.', 'attention',
+            'Pas de rendement ni de Temps Estimatif possible (les descriptions à un statut « Ignorer la description sans quantité » ne sont pas signalées).',
+            'attention',
             Description.objects.filter(Q(quantite__isnull=True) | Q(quantite=0), projet__affaire__actif=True)
+            .exclude(Exists(LigneFeuille.objects.filter(description=OuterRef('pk'), statut__ignorer_sans_quantite=True)))
             .select_related('projet__affaire', 'projet__prestation').order_by('projet__affaire__nom', 'nom'),
             lambda d: {'libelle': d.nom, 'detail': f'{_nom_affaire(d.projet.affaire)} › {d.projet.prestation.nom} › {d.projet.nom}',
                        'lien': _lien_marche(d.projet)})

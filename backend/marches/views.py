@@ -386,6 +386,13 @@ class DescriptionViewSet(EcritureSurAffaireMixin, BaseMarche):
     CHEMIN_AFFAIRE = 'projet__affaire'
     serializer_class = DescriptionSerializer
 
+    def perform_destroy(self, instance):
+        projet = instance.projet
+        super().perform_destroy(instance)
+        # Report DT : le linéaire total change, donc les Quantités des autres descriptions aussi
+        from .report_dt import recalculer
+        recalculer(projet, getattr(self.request.user, 'employe', None))
+
     def get_queryset(self):
         queryset = super().get_queryset()
         return self.filtrer_lecture(queryset) if self.action in self.LECTURE else queryset

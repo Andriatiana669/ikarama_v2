@@ -366,3 +366,60 @@ class ConfigurationsResponsablesTests(AuthentifieMixin, TestCase):
         self.assertEqual(len(self.client.get('/api/marches/configurations-responsables/').data), 2)       # lecture pour tous
         self.assertEqual(self.client.delete(f"/api/marches/configurations-responsables/{a['id']}/").status_code, 403)
         self.assertIsNotNone(b)
+
+
+class ReportDtTests(AuthentifieMixin, TestCase):
+    """Report DT : Quantité = Quantité linéaire × Surface ÷ Linéaire total ; statut « Ignorer la description sans quantité »."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.get('/api/auth/moi/')
+        User.objects.filter(username='PR00001').update(is_staff=True, is_superuser=True)
+        self.moi = Employe.objects.get(code_barre='PR00001')
+        prestation = self.client.post('/api/marches/prestations/', {'nom': 'Relevé', 'unite': 'm²', 'valeurs_rendement': ['100']}).data
+        self.affaire = self.client.post('/api/marches/affaires/', {'nom': 'Bâtiments', 'responsables': [self.moi.id],
+                                                                   'membres': [self.moi.id], 'report_dt': True}).data
+        self.client.post(f"/api/marches/affaires/{self.affaire['id']}/prestations/", {'prestation': prestation['id'], 'coche': True})
+        reponse = self.client.post('/api/marches/projets/', {'affaire': self.affaire['id'], 'prestation': prestation['id'],
+                                                             'nom': 'Lot 1', 'rendement': prestation['rendements'][0]['id'],
+                                                             'date_livraison': '2026-12-31'})
+        self.projet = reponse.data
+
+    def description(self, nom, lineaire):
+        return self.client.post('/api/marches/descriptions/', {'projet': self.projet['id'], 'nom': nom,
+                                                               'quantite_lineaire': lineaire, 'quantite': '999'}).data
+
+    def test_quantite_calculee(self):
+        from marches.models import Description
+        self.assertTrue(self.affaire['report_dt'])
+        a = self.description('Mur A', '30,004')               # arrondi à 30.00
+        b = self.description('Mur B', '10')
+        self.assertEqual(a['quantite_lineaire'], '30.00')
+        self.assertIsNone(Description.objects.get(pk=a['id']).quantite)    # pas encore de surface : Quantité vide (999 ignoré)
+        projet = self.client.patch(f"/api/marches/projets/{self.projet['id']}/", {'surface_m2': '200.555'}, format='json').data
+        self.assertEqual((projet['surface_m2'], projet['lineaire_total']), ('200.56', '40.00'))
+        qa, qb = (Description.objects.get(pk=x['id']).quantite for x in (a, b))
+        self.assertEqual((str(qa), str(qb)), ('150.42', '50.14'))         # 30 × 200,56 ÷ 40 ; 10 × 200,56 ÷ 40
+        # Une seule quantité linéaire change : toutes les Quantités du projet suivent
+        self.client.patch(f"/api/marches/descriptions/{b['id']}/", {'quantite_lineaire': '30'}, format='json')
+        self.assertEqual(str(Description.objects.get(pk=a['id']).quantite), '100.28')   # 30 × 200,56 ÷ 60
+        # Suppression : le linéaire total change aussi
+        self.client.delete(f"/api/marches/descriptions/{b['id']}/")
+        self.assertEqual(str(Description.objects.get(pk=a['id']).quantite), '200.56')
+
+    def test_statut_ignorer_sans_quantite(self):
+        from gsheets.models import Feuille, LigneFeuille, PerimetreFeuille
+        from gsheets.services import synchroniser
+        from marches.models import Affaire, Prestation, Statut
+        d = self.description('Mur A', None)                   # sans quantité
+        feuille = Feuille.objects.create(nom='Suivi', utiliser_criteres=False)
+        PerimetreFeuille.objects.create(feuille=feuille, affaire=Affaire.objects.get(pk=self.affaire['id']),
+                                        prestation=Prestation.objects.get(nom='Relevé'))
+        synchroniser(feuille)
+        controle = lambda: next(c for c in self.client.get('/api/controles/').data['controles'] if c['code'] == 'description_sans_quantite')
+        self.assertEqual(controle()['nombre'], 1)
+        a, b = Statut.objects.create(nom='Sans objet', ignorer_sans_quantite=True), Statut.objects.create(nom='Annulé', ignorer_sans_quantite=True)
+        self.assertEqual(Statut.objects.filter(ignorer_sans_quantite=True).count(), 2)   # plusieurs statuts possibles
+        LigneFeuille.objects.filter(description_id=d['id']).update(statut=b)
+        self.assertEqual(controle()['nombre'], 0)
+        self.assertIsNotNone(a)

@@ -26,6 +26,8 @@ export interface SaisiePointage {
   commentaire: string
   /** Nouvelles quantités des descriptions choisies { id: valeur } (historique dans la feuille) */
   quantites?: Record<string, string>
+  /** Report DT : nouvelles quantités linéaires { id: valeur } (les Quantités du projet sont recalculées) */
+  quantites_lineaires?: Record<string, string>
 }
 
 const ressource = creerRessource<Pointage, SaisiePointage>('/pointages/')

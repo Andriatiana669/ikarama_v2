@@ -16,6 +16,13 @@ import UiBouton from '@/components/ui/UiBouton.vue'
 import { useAuthStore } from '@/store/auth'
 import UiEmploye from '@/components/ui/UiEmploye.vue'
 
+/** Option que plusieurs éléments peuvent avoir en même temps (Statuts : ignorer la description sans quantité) */
+export interface OptionMultiple {
+  cle: 'ignorer_sans_quantite'
+  colonne: string
+  libelle: string
+}
+
 export interface RoleUnique {
   cle: 'par_defaut' | 'prioritaire_pointage' | 'active_note_rendement' | 'avancement_complet' | 'en_train_de_faire'
   /** Titre de colonne */
@@ -49,6 +56,8 @@ const props = withDefaults(
     avecCouleur?: boolean
     /** Rôles détenus par un seul élément à la fois (Statuts : par défaut, prioritaire…) : une colonne de boutons radio */
     rolesUniques?: readonly RoleUnique[]
+    /** Options que plusieurs éléments peuvent avoir (une colonne de cases à cocher) */
+    optionsMultiples?: readonly OptionMultiple[]
     /** Tâches : type qui relie le temps pointé à une colonne des feuilles */
     avecType?: boolean
   }>(),
@@ -71,6 +80,7 @@ const colonnes: Colonne[] = [
   { cle: 'id', libelle: 'ID', triable: true, largeur: '52px' },
   { cle: 'nom', libelle: majuscule(props.nom), triable: true },
   ...(props.rolesUniques ?? []).map((r) => ({ cle: r.cle, libelle: r.colonne, alignement: 'centre' as const, largeur: '100px' })),
+  ...(props.optionsMultiples ?? []).map((r) => ({ cle: r.cle, libelle: r.colonne, alignement: 'centre' as const, largeur: '110px' })),
   ...(props.avecType ? [{ cle: 'type', libelle: 'Type (colonne de la feuille)', cleExport: 'type_libelle' }] : []),
   { cle: 'cree_par', libelle: props.feminin ? 'Créée par' : 'Créé par', cleExport: 'cree_par_details', masqueeParDefaut: true },
   { cle: 'cree_le', libelle: props.feminin ? 'Créée le' : 'Créé le', triable: true, masqueeParDefaut: true },
@@ -96,6 +106,7 @@ const champs: ChampFormulaire[] = [
       }]
     : []),
   ...(props.rolesUniques ?? []).map((r) => ({ cle: r.cle, libelle: r.libelle, type: 'case' as const, pleineLargeur: true })),
+  ...(props.optionsMultiples ?? []).map((r) => ({ cle: r.cle, libelle: r.libelle, type: 'case' as const, pleineLargeur: true })),
 ]
 
 
@@ -105,6 +116,14 @@ async function basculerUnique(ligne: ElementCatalogue, cle: RoleUnique['cle'], r
   try {
     await props.api.modifier(ligne.id, { [cle]: !actif })
     toast.succes(actif ? `Plus aucun statut ${role}` : `« ${ligne.nom} » est le statut ${role}`)
+  } catch (e) {
+    toast.erreur(e)
+  }
+  tableau.value?.recharger()
+}
+async function basculerOption(ligne: ElementCatalogue, cle: OptionMultiple['cle']) {
+  try {
+    await props.api.modifier(ligne.id, { [cle]: !ligne[cle] })
   } catch (e) {
     toast.erreur(e)
   }
@@ -157,6 +176,10 @@ const auth = useAuthStore()
         :title="ligne[r.cle] ? 'Cliquer pour retirer' : r.libelle"
         @click.prevent="basculerUnique(ligne, r.cle, r.role)"
       />
+    </template>
+    <template v-for="r in optionsMultiples ?? []" :key="r.cle" #[`cellule-${r.cle}`]="{ ligne }">
+      <input type="checkbox" class="radio" :checked="!!ligne[r.cle]" :aria-label="`${ligne.nom} : ${r.libelle}`" :title="r.libelle"
+        :disabled="!auth.peut('modifier', module)" @click.prevent="basculerOption(ligne, r.cle)" />
     </template>
     <template #cellule-cree_par="{ ligne }"><UiEmploye :employe="ligne.cree_par_details" sans-matricule /></template>
     <template #cellule-cree_le="{ ligne }">{{ formatDateHeure(ligne.cree_le) }}</template>

@@ -112,7 +112,7 @@ class StatutSerializer(AuteurMixin, serializers.ModelSerializer):
     class Meta:
         model = Statut
         fields = ['id', 'nom', 'couleur', 'par_defaut', 'prioritaire_pointage', 'active_note_rendement',
-                  'avancement_complet', 'en_train_de_faire', 'cree_par_details', 'cree_le']
+                  'avancement_complet', 'en_train_de_faire', 'ignorer_sans_quantite', 'cree_par_details', 'cree_le']
 
     def validate_couleur(self, valeur):
         return valeur.upper()
@@ -146,7 +146,7 @@ class AffaireSerializer(SuiviMixin, AuteurMixin, serializers.ModelSerializer):
         model = Affaire
         fields = ['id', 'num_affaire', 'nom', 'temps', 'temps_tache', 'statut', 'responsables', 'responsables_details',
                   'membres', 'membres_details', 'nb_prestations', 'mon_role', 'actif', 'cree_par_details',
-                  'cree_le', 'modifie_le', 'pointage_seul']
+                  'cree_le', 'modifie_le', 'pointage_seul', 'report_dt']
         extra_kwargs = {'actif': {'read_only': True}}
 
     def get_statut(self, obj):
@@ -167,6 +167,25 @@ class AffaireSerializer(SuiviMixin, AuteurMixin, serializers.ModelSerializer):
         return (valeur or '').strip()   # facultatif, et plusieurs affaires peuvent avoir le même n°
 
 
+class DecimalArrondi(serializers.Field):
+    """Nombre arrondi automatiquement à 2 décimales (« 12,345 » -> 12.35) ; vide -> null."""
+
+    def to_internal_value(self, donnee):
+        from .report_dt import arrondir
+        try:
+            return arrondir(donnee)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
+
+    def to_representation(self, valeur):
+        return None if valeur is None else str(valeur)
+
+
+def _auteur(serializer):
+    requete = serializer.context.get('request')
+    return getattr(getattr(requete, 'user', None), 'employe', None)
+
+
 class ProjetSerializer(SuiviMixin, AuteurMixin, serializers.ModelSerializer):
     niveau_suivi = 'projet'
     rendement_valeur = serializers.DecimalField(source='rendement.valeur', max_digits=12, decimal_places=2, read_only=True)
@@ -177,17 +196,33 @@ class ProjetSerializer(SuiviMixin, AuteurMixin, serializers.ModelSerializer):
     statut = serializers.SerializerMethodField()
     # Temps d'une tâche choisie dans la page (?tache=<id>)
     temps_tache = serializers.SerializerMethodField()
+    # Report DT : surface saisie, linéaire total calculé (somme des quantités linéaires)
+    surface_m2 = DecimalArrondi(required=False, allow_null=True)
+    lineaire_total = serializers.SerializerMethodField()
+    report_dt = serializers.BooleanField(source='affaire.report_dt', read_only=True)
 
     class Meta:
         model = Projet
         fields = ['id', 'numero', 'affaire', 'prestation', 'prestation_nom', 'nom', 'quantite', 'unite',
                   'rendement', 'rendement_valeur', 'date_livraison', 'temps', 'temps_tache', 'statut', 'nb_descriptions',
-                  'cree_par_details', 'cree_le']
+                  'report_dt', 'surface_m2', 'lineaire_total', 'cree_par_details', 'cree_le']
         # La quantité est la somme des quantités des descriptions : jamais saisie directement
         read_only_fields = ['numero', 'quantite']
 
     def get_statut(self, obj):
         return self.get_statut_suivi(obj)
+
+    def get_lineaire_total(self, obj):
+        from .report_dt import lineaire_total
+        return str(lineaire_total(obj)) if obj.affaire.report_dt else None
+
+    def update(self, projet, donnees):
+        surface_avant = projet.surface_m2
+        projet = super().update(projet, donnees)
+        if projet.surface_m2 != surface_avant:
+            from .report_dt import recalculer
+            recalculer(projet, _auteur(self))   # Report DT : toutes les Quantités du projet suivent la surface
+        return projet
 
     def validate(self, donnees):
         if self.instance is not None:
@@ -208,10 +243,13 @@ class DescriptionSerializer(SuiviMixin, AuteurMixin, serializers.ModelSerializer
     unite = serializers.CharField(source='projet.prestation.unite', read_only=True)
     temps = serializers.SerializerMethodField()
     statut = serializers.SerializerMethodField()
+    # Report DT : quantité linéaire saisie ; la Quantité en est calculée (non modifiable)
+    quantite_lineaire = DecimalArrondi(required=False, allow_null=True)
+    report_dt = serializers.BooleanField(source='projet.affaire.report_dt', read_only=True)
 
     class Meta:
         model = Description
-        fields = ['id', 'numero', 'projet', 'nom', 'quantite', 'unite', 'temps', 'statut',
+        fields = ['id', 'numero', 'projet', 'nom', 'quantite', 'quantite_lineaire', 'report_dt', 'unite', 'temps', 'statut',
                   'cree_par_details', 'cree_le']
         read_only_fields = ['numero']
 
@@ -226,10 +264,31 @@ class DescriptionSerializer(SuiviMixin, AuteurMixin, serializers.ModelSerializer
     def validate(self, donnees):
         if self.instance is not None:
             donnees.pop('projet', None)   # une description ne change pas de projet
+        projet = donnees.get('projet') or getattr(self.instance, 'projet', None)
+        if projet is not None and projet.affaire.report_dt:
+            donnees.pop('quantite', None)   # Report DT : la Quantité est calculée
         return donnees
 
     @transaction.atomic
     def create(self, donnees):
         # Verrou sur le projet : deux créations simultanées n'obtiennent pas le même numéro
         Projet.objects.select_for_update().filter(pk=donnees['projet'].pk).first()
-        return super().create(donnees)
+        description = super().create(donnees)
+        self._recalculer(description.projet)
+        return description
+
+    @transaction.atomic
+    def update(self, description, donnees):
+        avant = description.quantite_lineaire
+        description = super().update(description, donnees)
+        if description.quantite_lineaire != avant:
+            from gsheets.services import historiser_quantite
+            historiser_quantite(description, avant, description.quantite_lineaire, _auteur(self),
+                                libelle='Quantité linéaire (ML)', champ='quantite_lineaire')
+            self._recalculer(description.projet)
+            description.refresh_from_db(fields=['quantite'])
+        return description
+
+    def _recalculer(self, projet):
+        from .report_dt import recalculer
+        recalculer(projet, _auteur(self))

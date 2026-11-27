@@ -68,7 +68,8 @@ const auth = useAuthStore()
           vide-texte="Les tâches seront proposées lors du pointage." />
       </div>
       <div class="zone-statuts">
-        <PanneauCatalogue v-if="auth.peut('voir', 'marches_statuts')" titre="Statuts" module="marches_statuts" icone="flag" nom="statut" :api="statutsApi" cle-stockage="marches-statuts" avec-couleur :roles-uniques="ROLES_STATUT"
+        <PanneauCatalogue v-if="auth.peut('voir', 'marches_statuts')" titre="Statuts" module="marches_statuts"
+          :options-multiples="[{ cle: 'ignorer_sans_quantite', colonne: 'Ignorer sans quantité', libelle: 'Ignorer la description sans quantité (Contrôles de cohérence)' }]" icone="flag" nom="statut" :api="statutsApi" cle-stockage="marches-statuts" avec-couleur :roles-uniques="ROLES_STATUT"
           vide-texte="Les statuts seront proposés lors du pointage." />
       </div>
     </div>

@@ -929,3 +929,24 @@ class MonTempsAmeliorationsTests(DonneesFeuilleMixin, AuthentifieMixin, TestCase
         AttributionRole.objects.create(role=role, critere='MATRICULE', employe=self.moi)
         reponse = self.client.post(f'/api/pointages/?employe={self.membre.id}', self.donnees(), format='json')
         self.assertEqual((reponse.status_code, reponse.data['employe']), (201, self.membre.id))
+
+
+class ReportDtPointageTests(DonneesFeuilleMixin, AuthentifieMixin, TestCase):
+    def test_quantite_lineaire_depuis_le_pointage(self):
+        from gsheets.models import HistoriqueLigne
+        self.creer()
+        self.affaire.report_dt = True
+        self.affaire.save()
+        self.projet.surface_m2 = 100
+        self.projet.save()
+        tache = Tache.objects.create(nom='Relevé', type='PRODUCTION')
+        lundi = date.today() - timedelta(days=date.today().weekday() + 7)
+        reponse = self.client.post('/api/pointages/', {
+            'date': lundi.isoformat(), 'heure_debut': '08:00', 'heure_fin': '10:00', 'descriptions': [self.d1.id], 'tache': tache.id,
+            'quantites_lineaires': {str(self.d1.id): '25'}}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.d1.refresh_from_db()
+        self.assertEqual((str(self.d1.quantite_lineaire), str(self.d1.quantite)), ('25.00', '100.00'))   # seule au linéaire : toute la surface
+        self.assertTrue(HistoriqueLigne.objects.filter(champ='quantite_lineaire', nouvelle_valeur='25').exists())
+        arbre = self.client.get('/api/pointages/arborescence/', {'affaire': self.affaire.id}).data
+        self.assertTrue(arbre['report_dt'])

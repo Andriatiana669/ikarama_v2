@@ -232,3 +232,26 @@ def alerte_ligne(ligne):
     estimatif = Decimal(description.quantite) / Decimal(objectif) * ParametresRendement.actuels().heures_par_jour
     return niveau_alerte(estimatif, ligne.temps_prod, ligne.statut_id, ParametresTempsEstimatif.actuels(),
                          Statut.pour_note_rendement())
+
+
+
+def nombre_texte(valeur):
+    """Une quantité lisible pour l'historique : 6500, 12,5 (vide si aucune)."""
+    if valeur is None:
+        return ''
+    texte = format(valeur, 'f')
+    if '.' in texte:
+        texte = texte.rstrip('0').rstrip('.')
+    return texte.replace('.', ',')
+
+
+def historiser_quantite(description, ancienne, nouvelle, auteur=None, libelle='Quantité', champ='quantite'):
+    """Inscrit le changement dans l'historique de chaque feuille qui contient la description, et prévient les pages ouvertes."""
+    from temps_reel.diffusion import feuille_modifiee
+
+    from .models import HistoriqueLigne
+    for ligne in LigneFeuille.objects.filter(description=description).select_related('feuille'):
+        HistoriqueLigne.objects.create(feuille=ligne.feuille, ligne=ligne, champ=champ, libelle=libelle,
+                                       ancienne_valeur=nombre_texte(ancienne), nouvelle_valeur=nombre_texte(nouvelle),
+                                       auteur=auteur)
+        feuille_modifiee(ligne.feuille_id)

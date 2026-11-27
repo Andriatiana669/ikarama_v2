@@ -116,6 +116,8 @@ class Statut(Ordonnable, Horodatage):
     avancement_complet = models.BooleanField('avancement 100 %', default=False)
     # Planning Projet : les lignes de feuille à ce statut disent ce que la personne « est en train de faire »
     en_train_de_faire = models.BooleanField('en train de faire', default=False)
+    # Contrôles de cohérence : les descriptions à ce statut ne sont pas signalées « sans quantité » (plusieurs statuts)
+    ignorer_sans_quantite = models.BooleanField('ignorer la description sans quantité', default=False)
 
     # Chacun de ces rôles n'appartient qu'à un seul statut à la fois
     ROLES_UNIQUES = ('par_defaut', 'prioritaire_pointage', 'active_note_rendement', 'avancement_complet', 'en_train_de_faire')
@@ -163,6 +165,8 @@ class Affaire(Ordonnable, Horodatage):
     nom = models.CharField("nom de l'affaire", max_length=200)
     # Affaire suivie au pointage seulement (pas de feuille prévue) : les Contrôles de cohérence ne la signalent pas
     pointage_seul = models.BooleanField('pointage seulement (pas de feuille)', default=False)
+    # Report DT : Quantité = Quantité linéaire × Surface ÷ Linéaire total (somme des quantités linéaires du projet)
+    report_dt = models.BooleanField('report DT', default=False)
     responsables = models.ManyToManyField(Employe, related_name='affaires_responsable')
     membres = models.ManyToManyField(Employe, related_name='affaires_membre')
     prestations = models.ManyToManyField(Prestation, through='AffairePrestation', related_name='affaires')
@@ -219,6 +223,9 @@ class Projet(Ordonnable, Horodatage):
                                   verbose_name='rendement objectif par jour')
     date_livraison = models.DateField('date de livraison')
 
+    # Report DT : surface du projet (m²) ; le linéaire total est la somme des quantités linéaires de ses descriptions
+    surface_m2 = models.DecimalField('surface (m²)', max_digits=14, decimal_places=2, null=True, blank=True)
+
     class Meta:
         ordering = ['ordre', 'id']
         verbose_name = 'Projet / Commune'
@@ -258,6 +265,9 @@ class Description(Ordonnable, Horodatage):
     numero = models.PositiveIntegerField('ID', editable=False, help_text='Numéro dans le projet : 1, 2, 3… (jamais réutilisé)')
     nom = models.CharField('description', max_length=200)
     quantite = models.DecimalField('quantité', max_digits=14, decimal_places=2, null=True, blank=True)
+
+    # Report DT : quantité linéaire (ML), saisie ; la Quantité en est calculée
+    quantite_lineaire = models.DecimalField('quantité linéaire (ML)', max_digits=14, decimal_places=2, null=True, blank=True)
 
     class Meta:
         ordering = ['ordre', 'id']

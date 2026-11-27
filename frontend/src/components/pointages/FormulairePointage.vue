@@ -103,6 +103,7 @@ watch(ouvert, async (valeur) => {
   nomProjet.value = p ? (tousLesProjets.value.find((x) => x.id === projet.value)?.nom ?? null) : nomProjet.value
   choisies.value = p?.marche.description_ids ?? choisies.value
   quantites.value = {}
+  lineaires.value = {}
   remplirQuantites()
   await nextTick() // laisse passer les observateurs de la cascade sans rien effacer
   initialisation = false
@@ -167,19 +168,49 @@ watch(projet, () => {
   choisies.value = unique ? [unique] : []
 })
 
+// Report DT : on saisit la quantité linéaire ; Quantité = Quantité linéaire × Surface ÷ Linéaire total (somme du projet)
+const reportDt = computed(() => !!arbre.value?.report_dt)
+const lineaires = ref<Record<string, string>>({})
+const nombre = (v: string | null | undefined) => (v === null || v === undefined || String(v).trim() === '' ? null : Number(String(v).replace(',', '.')))
+const arrondi2 = (v: number) => Math.round(v * 100) / 100
+const lineaireDe = (d: { id: Identifiant; quantite_lineaire?: string | null }) =>
+  String(d.id) in lineaires.value ? lineaires.value[String(d.id)]! : d.quantite_lineaire ?? ''
+/** Linéaire total du projet avec les valeurs saisies (aperçu, même règle que le serveur) */
+const lineaireTotal = computed(() => descriptions.value.reduce((t, d) => t + (nombre(lineaireDe(d)) ?? 0), 0))
+function quantiteCalculee(d: { id: Identifiant; quantite_lineaire?: string | null }) {
+  const ql = nombre(lineaireDe(d))
+  const surface = nombre(projetChoisi.value?.surface_m2 ?? null)
+  if (ql === null || surface === null || !lineaireTotal.value) return null
+  return arrondi2((ql * surface) / lineaireTotal.value)
+}
+const lineairesModifies = () => {
+  const changes: Record<string, string> = {}
+  for (const d of descriptions.value) {
+    if (!choisies.value.includes(d.id) || !d.quantite_modifiable || !(String(d.id) in lineaires.value)) continue
+    const v = String(lineaires.value[String(d.id)] ?? '').replace(',', '.').trim()
+    if ((nombre(v) ?? null) !== (nombre(d.quantite_lineaire ?? null) ?? null)) changes[String(d.id)] = v
+  }
+  return changes
+}
+
 // Quantité des descriptions choisies : affichée et modifiable (droit « Pointages > Quantité des descriptions »)
 function remplirQuantites() {
   for (const d of descriptions.value) {
+    if (choisies.value.includes(d.id) && !(String(d.id) in lineaires.value) && d.quantite_lineaire !== undefined)
+      lineaires.value[String(d.id)] = d.quantite_lineaire === null ? '' : String(Number(d.quantite_lineaire))
     // « 6000.00 » s'affiche « 6000 »
     if (choisies.value.includes(d.id) && !(String(d.id) in quantites.value)) quantites.value[String(d.id)] = d.quantite === null ? '' : String(Number(d.quantite))
   }
 }
 watch(choisies, remplirQuantites, { deep: true })
-const quantiteDe = (d: { id: Identifiant; quantite: string | null }) => quantites.value[String(d.id)] ?? d.quantite ?? ''
+const quantiteDe = (d: { id: Identifiant; quantite: string | null; quantite_lineaire?: string | null }) => {
+  if (reportDt.value) return quantiteCalculee(d)?.toString() ?? ''
+  return quantites.value[String(d.id)] ?? d.quantite ?? ''
+}
 const quantitesModifiees = () => {
   const changes: Record<string, string> = {}
   for (const d of descriptions.value) {
-    if (!choisies.value.includes(d.id) || !d.quantite_modifiable) continue
+    if (reportDt.value || !choisies.value.includes(d.id) || !d.quantite_modifiable) continue
     const v = (quantites.value[String(d.id)] ?? '').toString().replace(',', '.').trim()
     if (v !== '' && Number(v) !== Number(d.quantite ?? NaN)) changes[String(d.id)] = v
   }
@@ -196,6 +227,9 @@ const description = computed({
   get: () => choisies.value[0] ?? null,
   set: (id: Identifiant | null) => (choisies.value = id ? [id] : []),
 })
+function toutCocher(oui: boolean) {
+  choisies.value = oui ? descriptions.value.map((d) => d.id) : []
+}
 function basculer(id: Identifiant) {
   choisies.value = choisies.value.includes(id) ? choisies.value.filter((d) => d !== id) : [...choisies.value, id]
 }
@@ -247,6 +281,7 @@ async function enregistrer() {
     date: date.value, heure_debut: debut.value, heure_fin: fin.value, pause: pause.value,
     descriptions: choisies.value, tache: tache.value!, commentaire: commentaire.value,
     ...(Object.keys(quantitesModifiees()).length ? { quantites: quantitesModifiees() } : {}),
+    ...(reportDt.value && Object.keys(lineairesModifies()).length ? { quantites_lineaires: lineairesModifies() } : {}),
   }
   try {
     if (props.pointage) await (props.source ?? pointagesApi).modifier(props.pointage.id, donnees)
@@ -346,7 +381,16 @@ const premier = (cle: string) => (Array.isArray(erreurs.value[cle]) ? erreurs.va
           </option>
         </select>
       </UiChamp>
-      <div v-if="!multiple && descriptionChoisie" class="ligne-quantite">
+      <div v-if="!multiple && descriptionChoisie && reportDt" class="ligne-quantite">
+        <label class="champ-libelle" :for="`lineaire-${descriptionChoisie.id}`">Quantité linéaire</label>
+        <input :id="`lineaire-${descriptionChoisie.id}`" v-model="lineaires[String(descriptionChoisie.id)]" class="saisie quantite" type="number" min="0" step="0.01"
+          :disabled="!descriptionChoisie.quantite_modifiable" :aria-invalid="!!premier('quantites')" />
+        <span class="texte-doux">ML</span>
+        <span class="calcul">→ Quantité <strong>{{ quantiteCalculee(descriptionChoisie) ?? '—' }}</strong> {{ prestationChoisie?.unite }}</span>
+        <span class="texte-xs texte-doux">Report DT : Quantité linéaire × Surface ({{ projetChoisi?.surface_m2 ?? '—' }} m²) ÷ Linéaire total
+          ({{ arrondi2(lineaireTotal) }} ML).{{ projetChoisi?.surface_m2 ? '' : ' Surface du projet non renseignée : Quantité vide.' }}</span>
+      </div>
+      <div v-if="!multiple && descriptionChoisie && !reportDt" class="ligne-quantite">
         <label class="champ-libelle" :for="`quantite-${descriptionChoisie.id}`">Quantité</label>
         <input :id="`quantite-${descriptionChoisie.id}`" v-model="quantites[String(descriptionChoisie.id)]" class="saisie quantite" type="number" min="0" step="any"
           :disabled="!descriptionChoisie.quantite_modifiable" :aria-invalid="!!premier('quantites')" />
@@ -361,14 +405,26 @@ const premier = (cle: string) => (Array.isArray(erreurs.value[cle]) ? erreurs.va
         <span v-if="premier('descriptions')" class="champ-erreur" role="alert">{{ premier('descriptions') }}</span>
         <p v-if="!projet" class="texte-xs texte-doux">Choisissez d'abord l'affaire, le projet / la commune et la prestation.</p>
         <p v-else-if="!descriptions.length" class="texte-xs texte-doux">Aucune description pour ce projet.</p>
-        <ul v-else class="multiples">
+        <div v-else class="tout-cocher">
+          <button type="button" class="lien" :disabled="choisies.length === descriptions.length" @click="toutCocher(true)">
+            <i class="bi bi-check2-all" aria-hidden="true" /> Tout cocher</button>
+          <button type="button" class="lien" :disabled="!choisies.length" @click="toutCocher(false)">
+            <i class="bi bi-x-lg" aria-hidden="true" /> Tout décocher</button>
+          <span class="texte-xs texte-doux">{{ choisies.length }} / {{ descriptions.length }} cochée(s)</span>
+        </div>
+        <ul v-if="projet && descriptions.length" class="multiples">
           <li v-for="d in descriptions" :key="d.id">
             <label class="case">
               <input type="checkbox" :checked="choisies.includes(d.id)" @change="basculer(d.id)" />
               <span class="gras">{{ d.nom }}</span>
               <span class="texte-xs texte-doux">{{ formatNombre(d.quantite) }} {{ prestationChoisie?.unite }}{{ d.ligne ? `, ${d.ligne.feuille}` : ', hors feuille' }}</span>
             </label>
-            <span v-if="choisies.includes(d.id)" class="quantite-multiple">
+            <span v-if="choisies.includes(d.id) && reportDt" class="quantite-multiple">
+              <input v-model="lineaires[String(d.id)]" class="saisie quantite" type="number" min="0" step="0.01" :aria-label="`Quantité linéaire de ${d.nom}`"
+                :disabled="!d.quantite_modifiable" title="Quantité linéaire (ML)" />
+              <span class="texte-xs texte-doux">ML → {{ quantiteCalculee(d) ?? '—' }}</span>
+            </span>
+            <span v-if="choisies.includes(d.id) && !reportDt" class="quantite-multiple">
               <input v-model="quantites[String(d.id)]" class="saisie quantite" type="number" min="0" step="any" :aria-label="`Quantité de ${d.nom}`"
                 :disabled="!d.quantite_modifiable" :title="d.quantite_modifiable ? 'Quantité (modifiable)' : 'Lecture seule'" />
               <span class="texte-xs texte-doux">{{ prestationChoisie?.unite }}</span>
@@ -425,6 +481,10 @@ const premier = (cle: string) => (Array.isArray(erreurs.value[cle]) ? erreurs.va
 <style scoped>
 .ligne-quantite { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); margin-top: calc(-1 * var(--e2)); }
 .saisie.quantite { width: 130px; text-align: right; font-weight: 700; }
+.calcul { color: var(--marine); }
+.tout-cocher { display: flex; align-items: center; gap: var(--e3); margin-bottom: var(--e2); }
+.tout-cocher .lien { border: none; background: none; color: var(--marine-clair); font-size: var(--taille-s); font-weight: 600; cursor: pointer; padding: 0; }
+.tout-cocher .lien:disabled { opacity: 0.45; cursor: default; }
 .quantite-multiple { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
 .quantite-multiple .saisie.quantite { width: 100px; height: 30px; }
 .info-ligne { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; padding: var(--e2) var(--e3); border-radius: var(--rayon); background: var(--surface-douce); font-size: var(--taille-s); }
