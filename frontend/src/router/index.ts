@@ -47,6 +47,11 @@ const routes: RouteRecordRaw[] = [
     meta: { titre: 'Accueil' },
   },
   {
+    path: '/parametres/verification-droits',
+    component: () => import('@/views/parametres/VerificationDroits.vue'),
+    meta: { titre: 'Vérification des droits', section: 'Paramètres', administrateur: true },
+  },
+  {
     path: '/parametres/configurations-responsables',
     component: () => import('@/views/parametres/ConfigurationsResponsables.vue'),
     meta: { titre: 'Configurations Responsables', section: 'Paramètres', administrateur: true },

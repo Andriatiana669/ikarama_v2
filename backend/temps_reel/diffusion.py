@@ -50,5 +50,13 @@ def planning_modifie():
     diffuser(GROUPE_PLANNING, {'type': 'planning'})
 
 
+GROUPE_DROITS = 'droits'
+
+
+def droits_modifies():
+    """Un rôle, un droit, une attribution ou une règle d'accès a changé : chaque page relit ses droits (/api/auth/moi/)."""
+    diffuser(GROUPE_DROITS, {'type': 'droits'})
+
+
 def nouvelle_notification(employe_id):
     diffuser(groupe_employe(employe_id), {'type': 'notification'})

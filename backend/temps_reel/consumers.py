@@ -8,7 +8,7 @@ Messages reçus du navigateur (JSON) :
   {"type": "quitter_feuille"}
   {"type": "suivre_planning"} / {"type": "quitter_planning"}   changements du Planning Projet
 Messages envoyés : {"type": "pret"}, {"type": "feuille", "feuille": 3}, {"type": "presence", "feuille": 3},
-                   {"type": "notification"}, {"type": "planning"}, {"type": "erreur", "message": "…"}.
+                   {"type": "notification"}, {"type": "planning"}, {"type": "droits"}, {"type": "erreur", "message": "…"}.
 Sans authentification valide dans les 10 secondes, la connexion est fermée.
 """
 import asyncio
@@ -16,7 +16,7 @@ import asyncio
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from .diffusion import GROUPE_PLANNING, groupe_employe, groupe_feuille
+from .diffusion import GROUPE_DROITS, GROUPE_PLANNING, groupe_employe, groupe_feuille
 
 
 @database_sync_to_async
@@ -77,6 +77,7 @@ class TempsReelConsumer(AsyncJsonWebsocketConsumer):
                 await self.close(code=4403)
                 return
             await self._rejoindre(groupe_employe(self.employe.pk))
+            await self._rejoindre(GROUPE_DROITS)   # droits relus dès qu'un rôle change
             await self.send_json({'type': 'pret'})
             return
         if self.employe is None:

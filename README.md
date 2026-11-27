@@ -138,6 +138,8 @@ Chaque commande accepte `--simulation`. Exemples de crontab dans `docs/DEPLOIEME
 - Modules gérés (`droits.MODULES`) : `pointages_suivi`, `pointages_verification`, `gsheets_feuilles`, `marches_affaires`,
   `marches_prestations`, `marches_projets`, `marches_descriptions`, `marches_taches`, `marches_statuts`, `marches_archives`,
   `marches_duree`.
+  Postes et pôles comparés de façon tolérante (`autorisations/intitules.py`) ; diagnostic dans
+  `autorisations/verification.py` (Paramètres > Vérification des droits) ; droits relus en temps réel (événement `droits`).
   Modules `affichage_everwin` et `planning_projet` : par défaut, les siens seulement. `parametres_controles` : la page
   des Contrôles de cohérence par un rôle (le reste de Paramètres reste au superadmin). Autre droit de base : voir les feuilles de ses affaires. Plusieurs périmètres par action ; périmètre « Équipe de ».
 - Côté serveur : `module = '...'` sur la vue (contrôle « au moins une partie »), puis `q_droit(...)` pour filtrer les listes

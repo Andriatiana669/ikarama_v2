@@ -391,3 +391,36 @@ class ControlesEtSourcesTests(DonneesFeuilleMixin, AuthentifieMixin, TestCase):
         self.assertEqual(sum(m['heures'] for m in evaluation['mois']), 4.0)
         normal = self.client.get('/api/rendements/globale/').data
         self.assertFalse(any(e['code_barre'] == 'PR2' and e['rendement'] for e in normal['employes']))
+
+
+class VerificationDroitsTests(DonneesFeuilleMixin, AuthentifieMixin, TestCase):
+    """Le cas réel : deux chefs de projet, l'un écrit « Chef de Projet  » dans sa fiche RH."""
+
+    def setUp(self):
+        super().setUp()
+        from utilisateurs.models import EmployePoste
+        EmployePoste.objects.create(employe=self.membre, poste_nom='Chef de projet', pole='Production')
+        EmployePoste.objects.create(employe=self.etranger, poste_nom='Chef de Projet  ', pole='production')
+        role = Role.objects.create(nom='Chef de projet')
+        DroitRole.objects.create(role=role, module='marches_projets', action='creer', perimetre='TOUTES')
+        AttributionRole.objects.create(role=role, critere='POSTE', poste='Chef de projet')
+        faux = Role.objects.create(nom='Qualité')
+        DroitRole.objects.create(role=faux, module='marches_statuts', action='voir', perimetre='TOUS')
+        AttributionRole.objects.create(role=faux, critere='POSTE', poste='Chef projet')   # faute : ne correspond à personne
+        _User.objects.filter(username='PR00001').update(is_staff=True, is_superuser=True)
+
+    def test_comparaison_tolerante_et_verification(self):
+        from autorisations.droits import peut
+        self.client_de('PR3')                                                    # crée son compte
+        self.assertTrue(peut(_User.objects.get(username='PR3'), 'marches_projets', 'creer'))   # rôle reconnu malgré l'écriture
+        fiche = self.client.get(f'/api/autorisations/verification/personne/{self.etranger.id}/').data
+        role = next(r for r in fiche['roles'] if r['nom'] == 'Chef de projet')
+        self.assertIn('reconnu malgré la différence', role['comment'][0])
+        self.assertEqual(fiche['roles_proches'][0]['role'], 'Qualité')                     # « Chef projet » ≈ « Chef de Projet »
+        comparaison = self.client.get('/api/autorisations/verification/comparer/', {'a': self.membre.id, 'b': self.etranger.id}).data
+        self.assertEqual(comparaison['differences'], 0)
+        anomalies = {c['code']: c for c in self.client.get('/api/autorisations/verification/anomalies/').data}
+        self.assertEqual(anomalies['attribution_sans_personne']['nombre'], 1)
+        self.assertIn('Chef de projet', anomalies['attribution_sans_personne']['elements'][0]['detail'])   # suggestion
+        self.assertGreaterEqual(anomalies['intitules_variantes']['nombre'], 2)                            # poste et pôle
+        self.assertEqual(self.client_de('PR2').get('/api/autorisations/verification/anomalies/').status_code, 403)

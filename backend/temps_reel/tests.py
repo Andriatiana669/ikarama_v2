@@ -105,3 +105,11 @@ class PlanningTempsReelTests(DonneesFeuilleMixin, AuthentifieMixin, TransactionT
             await ws.disconnect()
 
         async_to_sync(scenario)()
+
+
+class DroitsTempsReelTests(DonneesFeuilleMixin, AuthentifieMixin, TransactionTestCase):
+    def test_changement_de_role_diffuse(self):
+        from autorisations.models import Role
+        with mock.patch('temps_reel.diffusion.diffuser') as diffuser:
+            Role.objects.create(nom='Nouveau rôle')
+            self.assertTrue(any(appel.args[0] == 'droits' for appel in diffuser.call_args_list))

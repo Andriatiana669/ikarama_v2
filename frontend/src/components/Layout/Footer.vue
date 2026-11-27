@@ -4,9 +4,9 @@ const annee = new Date().getFullYear()
 </script>
 
 <template>
-  <footer class="pied texte-xs texte-doux">Ikarama, suivi des pointages – {{ annee }}</footer>
+  <footer class="pied texte-xs texte-doux">Copyright © PARERA Madagascar – {{ annee }}</footer>
 </template>
 
 <style scoped>
-.pied { padding: var(--e4) var(--e6); border-top: 1px solid var(--bordure); }
+.pied { padding: var(--e4) var(--e6); border-top: 1px solid var(--bordure); text-align: center;}
 </style>

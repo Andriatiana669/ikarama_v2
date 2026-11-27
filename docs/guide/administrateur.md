@@ -20,6 +20,7 @@ L'accueil ajoute le nombre de problèmes des **Contrôles de cohérence** et l'*
 | **Rendement & Note** | Heures par jour, note objectif, note maximale, tranches de la note de qualité |
 | **Graphiques** | Sources autorisées du Rendement (Feuilles, Pointages), Synchronisation des données (mêmes affaires et prestations dans les onglets, pour tout le monde), camembert du temps, courbes d'Evolution, barres de Réel vs Objectif, seuils de l'Analyse |
 | **Temps Estimatif** | Unité par défaut, marge avant le rouge, couleurs des lignes |
+| **Vérification des droits** | Pourquoi une personne a (ou n'a pas) un droit : sa **fiche** (postes, accès au site, rôles appliqués et comment, grille complète avec les raisons), la **comparaison de deux personnes** (seulement les différences, expliquées), et les **anomalies** (attributions qui ne correspondent à personne, intitulés écrits de plusieurs façons, rôles sans effet, refus qui annulent un droit, personnes sans rôle) |
 | **Configurations Responsables** | Des groupes de personnes nommés, ajoutés d'un coup dans le champ Responsables d'une affaire ; la configuration « par défaut » préremplit les Responsables d'une nouvelle affaire |
 | **Contrôles de cohérence** | Les données incomplètes ou incohérentes, avec un lien pour corriger chacune (aussi visible par un rôle : module « Paramètres > Contrôles de cohérence ») |
 | **Autorisation** | Le moindre privilège : droits de base, rôles qui autorisent ou refusent une action, « Tester un accès », journal |
@@ -53,6 +54,14 @@ Marchés > Statuts (rôle « En train de faire »).
 
 **Accueil > Mon équipe** affiche les pointages incomplets de la **semaine en cours** (du lundi au dimanche, jours
 ouvrables jusqu'à aujourd'hui) pour les personnes du périmètre « Voir » de **Pointages > Vérification**.
+
+Les postes et pôles sont comparés **sans tenir compte des majuscules, des accents ni des espaces en trop** :
+un rôle attribué au poste « Chef de projet » s'applique aussi à une fiche RH qui dit « Chef de Projet ».
+Quand un rôle, un droit ou une attribution change, les pages ouvertes **relisent leurs droits aussitôt** (sans F5).
+
+Si deux personnes « avec le même droit » ne voient pas le même bouton, comparez-les dans **Vérification des droits**.
+S'il n'y a aucune différence de droits, la cause est dans la page : par exemple « Nouveau projet » n'apparaît qu'une
+fois une affaire en cours **et** une prestation choisies dans Ajouter un marché.
 
 **Un rôle**, c'est une grille : pour chaque module et chaque action (Voir, Créer, Modifier, Supprimer, Importer,
 Exporter, Archiver, Désarchiver), une liste **Autoriser sur…** et une liste **Refuser sur…**, avec **autant de

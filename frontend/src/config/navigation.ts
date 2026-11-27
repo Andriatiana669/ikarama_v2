@@ -69,6 +69,7 @@ export const NAVIGATION: EntreeMenu[] = [
     // Visible dès qu'une de ses pages est permise (Contrôles de cohérence peut l'être par un rôle)
     enfants: [
       { libelle: 'Autorisation', icone: 'shield-lock', route: '/parametres/autorisations', administrateur: true },
+      { libelle: 'Vérification des droits', icone: 'shield-check', route: '/parametres/verification-droits', administrateur: true },
       { libelle: 'Accès au site', icone: 'door-open', route: '/parametres/acces-site', administrateur: true },
       { libelle: 'Rendement & Note', icone: 'speedometer2', route: '/parametres/rendement-note', administrateur: true },
       { libelle: 'Graphiques', icone: 'bar-chart-line', route: '/parametres/graphiques', administrateur: true },

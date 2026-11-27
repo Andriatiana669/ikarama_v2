@@ -102,3 +102,38 @@ export const rolesApi = {
   /** Postes et pôles connus (API RH) pour les listes avec recherche */
   valeurs: async (): Promise<{ postes: string[]; poles: string[] }> => (await apiClient.get('/autorisations/valeurs/')).data,
 }
+
+// ------------------------------------------------------------------
+// Paramètres > Vérification des droits
+// ------------------------------------------------------------------
+export interface CaseDroit { action: string; libelle: string; autorise: boolean; refuse: boolean; resume: string; raisons: string[] }
+export interface FicheDroits {
+  employe: import('@/types').EmployeResume
+  superadmin: boolean
+  jamais_connecte: boolean
+  postes: { poste: string; pole: string }[]
+  acces_site: { acces: boolean; mode_ouvert: boolean; regles: { id: number; effet: string; description: string }[] }
+  roles: { id: number; nom: string; comment: string[] }[]
+  roles_proches: { role: string; critere: string; valeur: string; fiche: string }[]
+  grille: { module: string; libelle: string; actions: CaseDroit[] }[]
+}
+export interface ComparaisonDroits {
+  a: Omit<FicheDroits, 'grille'>
+  b: Omit<FicheDroits, 'grille'>
+  differences: number
+  grille: { module: string; libelle: string; differences: number; actions: { action: string; libelle: string; difference: boolean; a: CaseDroit; b: CaseDroit }[] }[]
+}
+export interface AnomalieDroits {
+  code: string
+  gravite: 'erreur' | 'attention' | 'info'
+  titre: string
+  aide: string
+  nombre: number
+  elements: { texte: string; detail: string }[]
+}
+export const verificationDroitsApi = {
+  fiche: async (employe: number | string): Promise<FicheDroits> => (await apiClient.get(`/autorisations/verification/personne/${employe}/`)).data,
+  comparer: async (a: number | string, b: number | string): Promise<ComparaisonDroits> =>
+    (await apiClient.get('/autorisations/verification/comparer/', { params: { a, b } })).data,
+  anomalies: async (): Promise<AnomalieDroits[]> => (await apiClient.get('/autorisations/verification/anomalies/')).data,
+}

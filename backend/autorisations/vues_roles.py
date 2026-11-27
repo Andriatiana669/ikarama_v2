@@ -238,3 +238,41 @@ class JournalView(APIView):
     def get(self, request):
         lignes = JournalAutorisation.objects.select_related('auteur')[:200]
         return Response([{'date': l.date, 'auteur': l.auteur.identifiant if l.auteur else '—', 'texte': l.texte} for l in lignes])
+
+
+# ---------------------------------------------------------------------------------------------
+# Paramètres > Vérification des droits (superadmin)
+# ---------------------------------------------------------------------------------------------
+class VerificationPersonneView(APIView):
+    permission_classes = [AdministrateurUniquement]
+
+    def get(self, request, employe_id):
+        from utilisateurs.models import Employe
+
+        from .verification import fiche
+        employe = Employe.objects.filter(pk=employe_id).first()
+        if employe is None:
+            return Response({'detail': 'Personne introuvable.'}, status=404)
+        return Response(fiche(employe))
+
+
+class VerificationComparerView(APIView):
+    permission_classes = [AdministrateurUniquement]
+
+    def get(self, request):
+        from utilisateurs.models import Employe
+
+        from .verification import comparer
+        a = Employe.objects.filter(pk=request.query_params.get('a') or 0).first()
+        b = Employe.objects.filter(pk=request.query_params.get('b') or 0).first()
+        if a is None or b is None:
+            return Response({'detail': 'Choisissez deux personnes.'}, status=400)
+        return Response(comparer(a, b))
+
+
+class VerificationAnomaliesView(APIView):
+    permission_classes = [AdministrateurUniquement]
+
+    def get(self, request):
+        from .verification import anomalies
+        return Response(anomalies())

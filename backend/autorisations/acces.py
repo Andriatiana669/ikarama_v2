@@ -34,10 +34,11 @@ def _regles():
 
 def q_regle(regle):
     """Filtre Django des employés concernés par UNE règle."""
+    from .intitules import q_intitule   # comparaison tolérante (majuscules, accents, espaces)
     if regle.critere == 'POLE':
-        return Q(postes__pole__iexact=regle.pole)
+        return q_intitule('pole', [regle.pole])
     if regle.critere == 'POSTE':
-        return Q(postes__poste_nom__iexact=regle.poste)
+        return q_intitule('poste_nom', [regle.poste])
     if regle.critere == 'MATRICULE':
         return Q(pk=regle.employe_id)
     if regle.critere == 'N1':

@@ -146,16 +146,17 @@ def roles_de(employe):
         return []
     if not hasattr(employe, '_roles'):
         from .models import AttributionRole
+        from .intitules import normaliser
         postes = list(employe.postes.values_list('poste_nom', 'pole'))
-        noms_postes = [p.lower() for p, _ in postes if p]
-        poles = [p.lower() for _, p in postes if p]
+        noms_postes = {normaliser(p) for p, _ in postes if p}   # comparaison tolérante (majuscules, accents, espaces)
+        poles = {normaliser(p) for _, p in postes if p}
         attributions = (AttributionRole.objects.filter(actif=True, role__actif=True)
                         .filter(Q(critere='MATRICULE', employe=employe) | Q(critere='POSTE') | Q(critere='POLE'))
                         .select_related('role'))
         roles = {}
         for a in attributions:
-            if (a.critere == 'MATRICULE' or (a.critere == 'POSTE' and a.poste.lower() in noms_postes)
-                    or (a.critere == 'POLE' and a.pole.lower() in poles)):
+            if (a.critere == 'MATRICULE' or (a.critere == 'POSTE' and normaliser(a.poste) in noms_postes)
+                    or (a.critere == 'POLE' and normaliser(a.pole) in poles)):
                 roles[a.role_id] = a.role
         employe._roles = list(roles.values())
     return employe._roles
@@ -190,13 +191,12 @@ def _q_personnes(perimetre, valeur, employe_id, employe, p):
     if perimetre == 'MOI':
         return Q(**{f'{p}pk': employe.pk})
     if perimetre == 'POLE':
+        from .intitules import q_intitule
         poles = [valeur] if valeur else list(employe.postes.exclude(pole='').values_list('pole', flat=True))
-        q = Q(**{f'{p}pk__in': []})
-        for pole in poles:
-            q |= Q(**{f'{p}postes__pole__iexact': pole})
-        return q
+        return q_intitule('pole', poles, p)
     if perimetre == 'POSTE':
-        return Q(**{f'{p}postes__poste_nom__iexact': valeur})
+        from .intitules import q_intitule
+        return q_intitule('poste_nom', [valeur], p)
     if perimetre == 'PERSONNE':
         return Q(**{f'{p}pk': employe_id})
     if perimetre == 'DIRECT':
